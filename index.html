@@ -1,0 +1,2103 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>顔バランス分析（試作）</title>
+<meta name="robots" content="noindex, nofollow">  <!-- 試作の公開URLを検索に出さない -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@600;700;800&family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #4a3f5c;
+    --sub: #75688a;
+    --accent: #c2588f;
+    --accent2: #7d5cc8;
+    --pink: #ffc8dd;
+    --lav: #d9ccff;
+    --mint: #bdf0e1;
+    --glass: linear-gradient(135deg, rgba(255, 255, 255, 0.64), rgba(255, 255, 255, 0.34));
+    --glass-hover: linear-gradient(135deg, rgba(255, 255, 255, 0.76), rgba(255, 255, 255, 0.44));
+    --glass-border: rgba(255, 255, 255, 0.8);
+    --glass-shadow: 0 8px 28px rgba(126, 112, 190, 0.18), 0 1px 3px rgba(126, 112, 190, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    --glass-shadow-hover: 0 16px 36px rgba(160, 120, 220, 0.28), 0 4px 12px rgba(255, 150, 190, 0.2), inset 0 1px 0 #fff;
+    --blur: blur(14px) saturate(150%);
+    --good: #2f7a62;
+    --good-soft: rgba(189, 240, 225, 0.85);
+    --slight: #94650f;
+    --slight-soft: rgba(255, 236, 190, 0.9);
+    --off: #b0386c;
+    --off-soft: rgba(255, 205, 224, 0.9);
+    --skip: #857d96;
+    --skip-soft: rgba(232, 228, 242, 0.85);
+    --cat-v: #e07a95;
+    --cat-h: #d0954a;
+    --cat-e: #6f95d8;
+    --cat-n: #4fae8c;
+    --cat-m: #c26ab8;
+    --line-green: #06c755;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    min-height: 100vh;
+    background: #eaf4fb;
+    color: var(--ink);
+    font-family: "Zen Maru Gothic", "Hiragino Maru Gothic ProN", "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+    font-weight: 500;
+    font-size: 15px;
+    line-height: 1.75;
+    -webkit-text-size-adjust: 100%;
+  }
+  /* 背景画像はスクロールしても動かない固定レイヤーに置く（iOSは background-attachment: fixed が効かないため） */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    background: url("lp-bg.webp") center / cover no-repeat;
+    filter: saturate(1.25);
+  }
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.06) 45%, rgba(255, 255, 255, 0.2));
+  }
+  .wrap { max-width: 480px; margin: 0 auto; padding: 24px 16px 56px; }
+
+  /* ---------- 文字 ---------- */
+  .display {
+    font-weight: 900;
+    letter-spacing: 0.03em;
+    background: linear-gradient(100deg, #7d5cc8 0%, #b465b8 50%, #e0679f 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    filter: drop-shadow(0 2px 6px rgba(255, 255, 255, 0.95));
+  }
+  h1 { font-size: 32px; line-height: 1.28; margin: 0 0 12px; }
+  h2 { font-size: 23px; line-height: 1.4; margin: 0 0 10px; }
+  h3 { font-size: 16px; font-weight: 700; margin: 0 0 6px; }
+  p { margin: 0 0 12px; }
+  .lead, .status, .note, .group-title, section > h3 { text-shadow: 0 0 2px rgba(255, 255, 255, 0.9), 0 1px 10px rgba(255, 255, 255, 0.95); }
+  .lead { color: var(--ink); }
+  .note { font-size: 12px; color: var(--sub); line-height: 1.6; }
+  .status { font-size: 14px; color: var(--sub); text-align: center; margin: 10px 0; min-height: 1.7em; }
+  .mt { margin-top: 16px; }
+  .hidden { display: none !important; }
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 12px;
+    padding: 3px 6px 3px 14px;
+    border: 1px solid var(--glass-border);
+    border-radius: 999px;
+    background: var(--glass);
+    -webkit-backdrop-filter: var(--blur);
+    backdrop-filter: var(--blur);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: var(--accent2);
+  }
+  .badge {
+    display: inline-block;
+    padding: 1px 10px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, var(--pink), var(--lav));
+    color: #6b3f7e;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+  }
+
+  /* ---------- ガラスのカード ---------- */
+  .card, details.side, .tips {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--glass-border);
+    background: var(--glass);
+    -webkit-backdrop-filter: var(--blur);
+    backdrop-filter: var(--blur);
+    box-shadow: var(--glass-shadow);
+    transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+  }
+  .card { border-radius: 22px; padding: 16px; margin: 0 0 14px; }
+  .card.pick h3 { font-size: 18px; }
+  .card.pick .meta { font-size: 13px; color: var(--sub); margin-bottom: 10px; }
+  .tips { margin: 0 0 14px; padding: 12px 14px 12px 32px; border-radius: 18px; font-size: 14px; color: var(--ink); }
+
+  /* ホバーで光がすっと走る（光沢感）。タップ時も同じ光を出す */
+  .card::after, details.side::after, .btn::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 55%;
+    height: 100%;
+    background: linear-gradient(105deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.6) 50%, rgba(255, 255, 255, 0) 100%);
+    transform: translateX(-190%) skewX(-14deg);
+    pointer-events: none;
+  }
+  @media (hover: hover) {
+    .card:hover, details.side:hover {
+      transform: translateY(-3px);
+      background: var(--glass-hover);
+      box-shadow: var(--glass-shadow-hover);
+    }
+    .card:hover::after, details.side:hover::after, .btn:hover::after {
+      transform: translateX(290%) skewX(-14deg);
+      transition: transform 0.9s ease;
+    }
+  }
+  .btn:active::after {
+    transform: translateX(290%) skewX(-14deg);
+    transition: transform 0.6s ease;
+  }
+
+  /* ---------- ボタン ---------- */
+  .btn {
+    position: relative;
+    overflow: hidden;
+    display: block;
+    width: 100%;
+    padding: 14px 18px;
+    border: 1px solid rgba(255, 255, 255, 0.85);
+    border-radius: 999px;
+    -webkit-backdrop-filter: blur(12px) saturate(160%);
+    backdrop-filter: blur(12px) saturate(160%);
+    box-shadow: 0 6px 18px rgba(160, 130, 220, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.95), inset 0 -3px 8px rgba(140, 110, 200, 0.12);
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.25s ease, filter 0.25s ease;
+  }
+  .btn-primary { background: linear-gradient(135deg, rgba(255, 186, 216, 0.95), rgba(203, 188, 255, 0.95)); color: #4b2a63; }
+  .btn-sub { background: rgba(255, 255, 255, 0.55); color: var(--accent2); }
+  .btn-line {
+    background: linear-gradient(135deg, #5fe3a1, var(--line-green));
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 90, 40, 0.35);
+    box-shadow: 0 6px 18px rgba(6, 199, 85, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  }
+  .btn-ghost {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    color: var(--sub);
+    font-weight: 500;
+    font-size: 14px;
+    padding: 10px;
+    text-shadow: 0 1px 8px #fff;
+  }
+  .btn-ghost::after { display: none; }
+  .btn:active { transform: translateY(1px) scale(0.99); }
+  .btn[disabled] { opacity: 0.5; cursor: default; }
+  @media (hover: hover) {
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 28px rgba(170, 130, 230, 0.35), 0 3px 8px rgba(255, 150, 190, 0.22), inset 0 1px 0 #fff;
+      filter: brightness(1.03) saturate(1.06);
+    }
+    .btn-line:hover { box-shadow: 0 12px 28px rgba(6, 199, 85, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.7); }
+    .btn-ghost:hover { transform: none; box-shadow: none; filter: none; color: var(--accent2); }
+  }
+  .file-label input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+  /* ---------- お知らせ ---------- */
+  .privacy, .warn, .error {
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    border-radius: 16px;
+    padding: 10px 12px;
+    margin: 12px 0;
+    font-size: 13px;
+    line-height: 1.6;
+    -webkit-backdrop-filter: var(--blur);
+    backdrop-filter: var(--blur);
+  }
+  .privacy { display: flex; gap: 8px; align-items: flex-start; background: rgba(205, 245, 232, 0.72); color: #2f6b58; }
+  .warn { background: rgba(255, 236, 205, 0.82); color: #7c5512; }
+  .error { background: rgba(255, 214, 230, 0.85); color: #8e3245; }
+
+  /* ---------- 写真・入力 ---------- */
+  canvas.photo {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 2px solid rgba(255, 255, 255, 0.9);
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.4);
+    box-shadow: var(--glass-shadow);
+    touch-action: none;
+  }
+  details.side { border-radius: 18px; padding: 12px 14px; margin: 12px 0; }
+  details.side summary { cursor: pointer; font-weight: 700; font-size: 14px; color: var(--accent2); }
+  .q { margin: 12px 0 0; }
+  .q .qt { font-size: 14px; margin-bottom: 6px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips label { position: relative; }
+  .chips input { position: absolute; opacity: 0; }
+  .chips span {
+    display: inline-block;
+    padding: 6px 13px;
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.6);
+    font-size: 13px;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.2s ease;
+  }
+  .chips input:checked + span {
+    background: linear-gradient(135deg, var(--pink), var(--lav));
+    color: #4b2a63;
+    font-weight: 700;
+    box-shadow: 0 4px 12px rgba(180, 140, 230, 0.3), inset 0 1px 0 #fff;
+  }
+  .chips input:focus-visible + span { outline: 2px solid var(--accent2); outline-offset: 2px; }
+  @media (hover: hover) { .chips span:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(180, 140, 230, 0.25); } }
+  .group-title { display: flex; align-items: center; gap: 8px; font-weight: 700; margin: 20px 0 8px; }
+  .cat-dot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 26px;
+    height: 26px;
+    border-radius: 9px;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 900;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 2px 6px rgba(120, 100, 180, 0.2);
+  }
+  .field { display: grid; grid-template-columns: 1fr 96px; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px dashed rgba(160, 140, 200, 0.35); }
+  .field:last-child { border-bottom: 0; }
+  .field .lbl { font-size: 14px; line-height: 1.5; }
+  .field .num { font-weight: 900; color: var(--accent); margin-right: 4px; }
+  .field input {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.95);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.72);
+    font-family: inherit;
+    font-size: 16px;
+    text-align: right;
+    color: var(--ink);
+    box-shadow: inset 0 1px 3px rgba(120, 100, 180, 0.12);
+  }
+  .field input:focus { outline: none; box-shadow: 0 0 0 3px rgba(205, 190, 255, 0.7); }
+  .guide-card { text-align: center; }
+  .guide { display: block; width: 100%; max-width: 300px; margin: 0 auto 4px; }
+
+  /* ---------- 結果 ---------- */
+  .st-good { background: var(--good-soft); color: var(--good); }
+  .st-slight { background: var(--slight-soft); color: var(--slight); }
+  .st-off { background: var(--off-soft); color: var(--off); }
+  .st-skip { background: var(--skip-soft); color: var(--skip); }
+  .scale { margin: 8px 0 4px; }
+  .scale .bar { position: relative; height: 12px; border-radius: 999px; background: linear-gradient(90deg, #ffc8dd, #fff4fa 50%, #d4c6ff); box-shadow: inset 0 1px 3px rgba(120, 100, 180, 0.2); }
+  .scale .mark { position: absolute; top: -5px; width: 22px; height: 22px; margin-left: -11px; border: 3px solid #fff; border-radius: 50%; background: linear-gradient(135deg, #ff9ec4, #a99cff); box-shadow: 0 3px 10px rgba(160, 120, 220, 0.45); }
+  .scale .ends { display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: var(--sub); }
+  .scale .label { margin-top: 2px; text-align: center; font-size: 17px; font-weight: 900; color: var(--accent2); }
+  .point { border-left: 5px solid #f2a3c4; }
+  .point.strength { border-left-color: #8fdcc0; }
+  .point .kicker { font-size: 12px; font-weight: 700; color: var(--sub); }
+  .point .find { margin: 2px 0 8px; font-size: 17px; font-weight: 700; line-height: 1.55; }
+  .point .makeup { padding: 9px 12px; border-radius: 14px; background: rgba(255, 222, 236, 0.7); font-size: 14px; }
+  .point .makeup b { color: var(--accent); }
+  .doctor { background: linear-gradient(135deg, rgba(255, 240, 222, 0.78), rgba(255, 255, 255, 0.4)); }
+  .items .irow { padding: 9px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.75); }
+  .items .irow:last-child { border-bottom: 0; }
+  .items .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; }
+  .items .sub { margin-top: 2px; font-size: 12px; color: var(--sub); }
+  .items .pill { display: inline-block; flex: none; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+  details.all summary { cursor: pointer; font-weight: 700; color: var(--accent2); }
+
+  /* ---------- FV（LP素材の画像で組む） ---------- */
+  .hero { position: relative; }
+  .hero-badge { position: absolute; top: 0; right: 0; z-index: 2; }
+  .hero-title { margin: 0 -2%; }
+  .hero-title img, .cta-img img { display: block; width: 100%; height: auto; }
+  .hero-person {
+    display: block;
+    width: calc(100% + 16px);
+    max-width: none;
+    height: auto;
+    margin: -14% -8px 0;
+    /* シャツの下の切れ目をぼかす */
+    -webkit-mask-image: linear-gradient(to bottom, #000 78%, transparent 93%);
+    mask-image: linear-gradient(to bottom, #000 78%, transparent 93%);
+  }
+  /* ボタンは画面の下に浮かせておき、本来の位置まで来たらそこに収まる */
+  .hero-cta { position: sticky; bottom: calc(4px + env(safe-area-inset-bottom)); z-index: 5; margin: -16% -5% 0; }
+  .cta-img {
+    position: relative;
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.25s ease, filter 0.25s ease;
+  }
+  .cta-shine { position: absolute; inset: 17% 9% 20% 9%; overflow: hidden; border-radius: 999px; pointer-events: none; }
+  .cta-shine::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 40%;
+    height: 100%;
+    background: linear-gradient(105deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.65) 50%, rgba(255, 255, 255, 0));
+    transform: translateX(-160%) skewX(-14deg);
+    /* スマホにはホバーが無いので、数秒おきに光を走らせる */
+    animation: cta-sweep 4.5s ease-in-out 1.2s infinite;
+  }
+  @keyframes cta-sweep {
+    0% { transform: translateX(-160%) skewX(-14deg); }
+    28%, 100% { transform: translateX(320%) skewX(-14deg); }
+  }
+  @media (hover: hover) {
+    .cta-img:hover { transform: translateY(-2px) scale(1.01); filter: brightness(1.04) saturate(1.08); }
+  }
+  .cta-img:active { transform: scale(0.98); }
+  .cta-img:focus-visible { outline: 3px solid var(--accent2); outline-offset: -12%; border-radius: 999px; }
+  .hero-privacy { display: flex; justify-content: center; gap: 6px; margin: 6px 0 0; font-size: 12px; color: #2f6b58; text-shadow: 0 0 2px #fff, 0 1px 8px #fff; }
+  .hero .btn-ghost { margin-top: 2px; }
+
+  /* ---------- 線の調整（縦→横→パーツの3ステップ） ---------- */
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); margin: 0 0 12px; padding: 0; list-style: none; }
+  .steps li { position: relative; }
+  /* ステップどうしをつなぐ線 */
+  .steps li + li::before {
+    content: "";
+    position: absolute;
+    top: 16px;
+    left: calc(-50% + 22px);
+    right: calc(50% + 22px);
+    height: 2px;
+    border-radius: 2px;
+    background: rgba(170, 150, 220, 0.35);
+  }
+  .steps li.done + li::before { background: linear-gradient(90deg, #8fdcc0, #c3a2ff); }
+  .steps button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--sub);
+    text-shadow: 0 0 2px #fff, 0 1px 8px #fff;
+    cursor: default;
+  }
+  .steps .num {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.6);
+    -webkit-backdrop-filter: var(--blur);
+    backdrop-filter: var(--blur);
+    box-shadow: var(--glass-shadow);
+    font-size: 14px;
+    color: var(--sub);
+    text-shadow: none;
+  }
+  .steps li.current button { color: #6b3f9e; }
+  .steps li.current .num { background: linear-gradient(135deg, #ff9ec4, #a99cff); color: #fff; box-shadow: 0 4px 14px rgba(180, 130, 230, 0.45), 0 0 0 4px rgba(255, 255, 255, 0.6); }
+  .steps li.done button { color: #2f7a62; cursor: pointer; }
+  .steps li.done .num { background: linear-gradient(135deg, #a8ecd6, #7fd3b8); color: #fff; }
+  #adjust-canvas, #result-canvas { width: auto; max-width: 100%; max-height: 62vh; margin: 0 auto; }
+  .line-picker { margin-top: 12px; padding: 12px 14px; }
+  .line-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .line-chips button {
+    padding: 6px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.6);
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .line-chips button[aria-pressed="true"] { background: linear-gradient(135deg, #ff9ec4, #ff6fa8); border-color: #fff; color: #fff; font-weight: 700; box-shadow: 0 4px 12px rgba(255, 110, 170, 0.35); }
+  .nudge { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+  .line-name { flex: 1; font-weight: 700; color: #e0457a; }
+  .nudge-btn {
+    width: 52px;
+    height: 44px;
+    border: 1px solid #fff;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.75);
+    box-shadow: 0 3px 10px rgba(150, 130, 220, 0.2), inset 0 1px 0 #fff;
+    font-size: 18px;
+    color: var(--accent2);
+    cursor: pointer;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .nudge-btn:active { transform: scale(0.95); background: #fff; }
+  .line-picker .btn-ghost { margin-top: 4px; padding: 6px; font-size: 13px; }
+
+  /* 黄金比チェック（結果画面） */
+  .ring b { font-family: "Shippori Mincho B1", "Hiragino Mincho ProN", "Yu Mincho", serif; }
+  .sc-title { display: flex; flex-direction: column; margin-bottom: 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; color: #4a4466; }
+  .sc-title small { font-size: 9px; font-weight: 500; letter-spacing: 0; color: var(--sub); }
+  .sc-body { display: flex; align-items: center; gap: 10px; }
+  .ring {
+    --size: 56px;
+    position: relative;
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: var(--size);
+    height: var(--size);
+    border-radius: 50%;
+    background: conic-gradient(#8ec5ff 0%, #c3a2ff calc(var(--p) * 0.5%), #ff9ec4 calc(var(--p) * 1%), rgba(190, 180, 225, 0.35) calc(var(--p) * 1%));
+  }
+  .ring::before { content: ""; position: absolute; inset: 5px; border-radius: 50%; background: rgba(255, 255, 255, 0.92); }
+  .ring > span { position: relative; line-height: 1; text-align: center; }
+  .ring b { font-size: 21px; font-weight: 700; color: #2c3150; }
+  .ring small { display: block; margin-top: 2px; font-size: 9px; color: var(--sub); }
+  .bars { flex: 1; display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+  .bars li { display: grid; grid-template-columns: 13px 1fr 24px; align-items: center; gap: 5px; font-size: 11px; font-weight: 900; line-height: 1.3; }
+  .bars i { position: relative; height: 5px; overflow: hidden; border-radius: 999px; background: rgba(200, 190, 230, 0.4); }
+  .bars i::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: var(--w); border-radius: inherit; background: linear-gradient(90deg, #8ec5ff, #c3a2ff, #ff9ec4); }
+  .bars em { font-size: 10px; font-style: normal; font-weight: 500; text-align: right; color: var(--sub); }
+  .score-card .ring { --size: 96px; }
+  .score-card .ring::before { inset: 8px; }
+  .score-card .ring b { font-size: 36px; }
+  .score-card .ring small { font-size: 12px; }
+  .score-card .sc-body { gap: 16px; }
+  .score-card .bars { gap: 7px; }
+  .score-card .bars li { grid-template-columns: 16px 1fr 30px; font-size: 13px; }
+  .score-card .bars i { height: 7px; }
+  .score-card .bars em { font-size: 12px; }
+  .score-card .sc-title { font-size: 14px; }
+  .score-card .sc-title small { font-size: 11px; }
+
+  /* ---------- 結果：総評・解説カード ---------- */
+  .summary p { margin: 0; font-size: 15px; line-height: 1.85; }
+  .summary b { color: #6b3f9e; }
+  .sum-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .sum-badge { padding: 2px 12px; border-radius: 999px; background: linear-gradient(135deg, #ff9ec4, #a99cff); color: #fff; font-size: 12px; font-weight: 700; letter-spacing: 0.1em; }
+  .sum-head small { font-size: 11px; color: var(--sub); }
+  .section-lead { margin: -2px 0 10px; font-size: 13px; color: var(--sub); text-shadow: 0 0 2px #fff, 0 1px 8px #fff; }
+  .deep { padding: 14px 14px 16px; }
+  .deep > summary { list-style: none; cursor: pointer; }
+  .deep > summary::-webkit-details-marker { display: none; }
+  .deep-head { display: flex; align-items: center; gap: 10px; }
+  .deep-title { display: flex; flex-direction: column; min-width: 0; }
+  .deep-title .kicker { font-size: 12px; font-weight: 700; color: var(--sub); }
+  .deep-title .find { font-size: 17px; font-weight: 700; line-height: 1.45; }
+  .chev { margin-left: auto; font-size: 20px; line-height: 1; color: var(--accent2); transition: transform 0.2s ease; }
+  .deep[open] .chev { transform: rotate(180deg); }
+  canvas.viz { display: block; width: auto; max-width: 100%; max-height: 300px; margin: 14px auto 6px; border: 2px solid #fff; border-radius: 14px; box-shadow: var(--glass-shadow); }
+  canvas.viz.small { max-height: 170px; margin: 10px auto 8px; }
+  .legend { display: flex; justify-content: center; gap: 16px; font-size: 12px; color: var(--sub); }
+  .legend i { display: inline-block; width: 20px; margin-right: 5px; vertical-align: middle; border-top: 3px solid #ff4f97; }
+  .legend .ideal i { border-top: 3px dashed #1fb58f; }
+  .compare { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; margin: 12px 0 6px; text-align: center; }
+  .compare > div { padding: 8px 6px; border: 1px solid #fff; border-radius: 14px; background: rgba(255, 255, 255, 0.65); }
+  .compare small { display: block; font-size: 11px; color: var(--sub); }
+  .compare b { font-size: 14px; line-height: 1.4; }
+  .compare .you b { color: #e0457a; }
+  .compare .gold b { color: #1d8f73; }
+  .compare > span { color: var(--sub); }
+  .diff { margin: 6px 0 4px; text-align: center; font-size: 15px; font-weight: 700; color: #4a2f63; }
+  .diff small { display: block; margin-top: 2px; font-size: 10.5px; font-weight: 500; color: var(--sub); }
+  .block { margin-top: 16px; }
+  .block h5 { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; font-size: 14px; color: var(--accent2); }
+  .block p { margin: 0; font-size: 14px; }
+  .m-num { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: linear-gradient(135deg, #ff9ec4, #a99cff); color: #fff; font-size: 11px; }
+  .concern-list { display: flex; flex-direction: column; gap: 6px; }
+  .concern-list label { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid #fff; border-radius: 14px; background: rgba(255, 255, 255, 0.62); font-size: 14px; cursor: pointer; transition: background 0.2s ease; }
+  .concern-list label:has(input:checked) { background: rgba(255, 214, 230, 0.85); }
+  .concern-list input { flex: none; width: 18px; height: 18px; accent-color: #ff6fa8; }
+  .makeup-img { display: block; width: 100%; margin: 4px 0 10px; border: 2px solid #fff; border-radius: 14px; }
+  .steps-list { margin: 0; padding-left: 1.4em; font-size: 14px; }
+  .steps-list li { margin: 4px 0; }
+  .tx { margin-top: 8px; padding: 10px 12px; border: 1px solid #fff; border-radius: 14px; background: rgba(255, 255, 255, 0.65); }
+  .tx-name { font-weight: 700; }
+  .tx-how { margin: 2px 0 4px !important; font-size: 13px !important; }
+  .tx-price { font-size: 13px; font-weight: 700; color: var(--accent); }
+  .tx-more summary { margin-top: 4px; font-size: 12px; color: var(--sub); cursor: pointer; }
+  .tx-more dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 6px 0 0; font-size: 12px; }
+  .tx-more dt { color: var(--sub); white-space: nowrap; }
+  .tx-more dd { margin: 0; }
+  .tx-note { margin-top: 10px !important; font-size: 11.5px !important; color: var(--sub); }
+  .consult-note { margin: 6px 0 0; text-align: center; font-size: 11px; color: var(--sub); }
+  .coupon { padding: 20px 16px 16px; text-align: center; background: linear-gradient(135deg, rgba(255, 236, 244, 0.88), rgba(234, 228, 255, 0.8)); border: 1.5px solid #fff; }
+  .coupon-label { display: inline-block; margin: 0 0 8px; padding: 2px 14px; border-radius: 999px; background: var(--line-green); color: #fff; font-size: 12px; font-weight: 700; letter-spacing: 0.12em; }
+  .coupon-title {
+    margin: 0;
+    font-family: "Shippori Mincho B1", "Hiragino Mincho ProN", "Yu Mincho", serif;
+    font-size: 30px;
+    font-weight: 800;
+    line-height: 1.3;
+    background: linear-gradient(100deg, #e0679f 0%, #b06fd8 55%, #7f8fe8 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    filter: drop-shadow(0 2px 6px rgba(255, 255, 255, 0.9));
+  }
+  .coupon-sub { margin: 8px 0 0; font-size: 14px; }
+  .coupon-cut { margin: 16px -16px 14px; border-top: 2px dashed rgba(180, 150, 220, 0.55); }
+  .coupon-note { margin: 10px 0 0; font-size: 11.5px; line-height: 1.7; color: var(--sub); }
+  .btn.btn-consult { margin-top: 16px; padding: 12px 16px; border: 1.5px solid var(--line-green); background: rgba(255, 255, 255, 0.75); color: #04913f; font-size: 15px; }
+
+  /* ぼかしが使えない環境では、少し不透明にして読みやすさを保つ */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .card, details.side, .tips, .eyebrow { background: rgba(255, 255, 255, 0.86); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; }
+    .cta-shine::after { animation: none; }
+    .card:hover, details.side:hover, .btn:hover, .chips span:hover { transform: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- はじめ（FV） -->
+  <section id="s-start" class="hero">
+    <span class="badge hero-badge">試作版</span>
+    <h1 class="hero-title"><img src="lp-title.webp" alt="AI診断　顔の黄金比バランス分析　写真をアップするだけで、顔のバランスを可視化。" width="1448" height="1086"></h1>
+    <img class="hero-person" src="lp-person.webp" alt="スマホを見る女性の顔に黄金比の補助線が重なり、バランススコアと黄金比との比較が表示されているイメージ" width="1086" height="1448">
+    <div class="hero-cta">
+      <button type="button" class="cta-img" data-go="s-photo" aria-label="無料で診断する">
+        <img src="lp-cta.webp" alt="" width="2000" height="667"><span class="cta-shine" aria-hidden="true"></span>
+      </button>
+    </div>
+    <p class="hero-privacy"><span aria-hidden="true">🔒</span>写真はこのスマホの中だけで処理。どこにも送信・保存されません。</p>
+    <button class="btn btn-ghost" data-go="s-manual">写真を使わずに、自分で測って入力する →</button>
+    <p class="note">※ 美容分野で一般的に使われる比率の目安との比較です。医学的な診断ではありません。</p>
+  </section>
+
+  <!-- 写真を選ぶ -->
+  <section id="s-photo" class="hidden">
+    <h2 class="display">正面の写真を選ぶ</h2>
+    <ul class="tips">
+      <li>真正面・真顔（口は軽く閉じる）</li>
+      <li>前髪を上げて、おでこと輪郭を出す</li>
+      <li>明るい場所で、顔から50cm以上離して撮る</li>
+    </ul>
+    <label class="btn btn-primary file-label">写真を撮る・選ぶ
+      <input id="file" type="file" accept="image/*">
+    </label>
+    <p id="photo-status" class="status"></p>
+    <div id="photo-error" class="error hidden"></div>
+    <div class="privacy"><span aria-hidden="true">🔒</span><span>写真はこのスマホの中だけで処理します。どこにも送信・保存されません。</span></div>
+    <button class="btn btn-ghost" data-go="s-start">← 戻る</button>
+  </section>
+
+  <!-- 線の位置を確認する -->
+  <section id="s-adjust" class="hidden">
+    <ol class="steps" aria-label="線の確認の手順">
+      <li><button type="button" data-step="v"><span class="num">1</span>縦の線</button></li>
+      <li><button type="button" data-step="h"><span class="num">2</span>横の線</button></li>
+      <li><button type="button" data-step="p"><span class="num">3</span>パーツ</button></li>
+    </ol>
+    <h2 id="adjust-title" class="display"></h2>
+    <p id="adjust-lead" class="lead"></p>
+    <canvas id="adjust-canvas" class="photo" aria-label="線の位置を合わせる写真"></canvas>
+    <div class="card line-picker">
+      <div id="line-chips" class="line-chips" aria-label="動かす線"></div>
+      <div class="nudge">
+        <span id="line-name" class="line-name"></span>
+        <button type="button" id="nudge-minus" class="nudge-btn"></button>
+        <button type="button" id="nudge-plus" class="nudge-btn"></button>
+      </div>
+      <button type="button" id="line-reset" class="btn btn-ghost">この線を自動の位置に戻す</button>
+    </div>
+    <div id="yaw-warn" class="warn hidden"></div>
+
+    <details id="side-details" class="side hidden">
+      <summary>横顔の2項目（任意・鏡で見て答える）</summary>
+      <div class="side-qs" data-scope="auto"></div>
+    </details>
+
+    <div id="adjust-error" class="error hidden"></div>
+    <button id="adjust-next" type="button" class="btn btn-primary"></button>
+    <button id="adjust-back" type="button" class="btn btn-ghost"></button>
+  </section>
+
+  <!-- 手入力 -->
+  <section id="s-manual" class="hidden">
+    <h2 class="display">長さを入力する</h2>
+    <p class="lead">写真や鏡で測った長さを入力してください。単位はmmでも写真アプリのpxでもOKです（すべて同じ単位で）。わからない項目は空欄で大丈夫です。</p>
+
+    <div class="card guide-card">
+    <svg class="guide" viewBox="0 0 260 300" role="img" aria-label="測る場所の図">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#c2588f"/></marker>
+      </defs>
+      <path d="M50 120 Q50 30 120 28 Q190 30 190 120 Q190 215 150 258 Q120 284 90 258 Q50 215 50 120 Z" fill="#fff" stroke="#d9c6bd" stroke-width="2"/>
+      <path d="M58 70 Q120 40 182 70" fill="none" stroke="#b9a59a" stroke-width="2" stroke-dasharray="3 3"/>
+      <path d="M72 112 Q86 104 104 110" fill="none" stroke="#8a6f62" stroke-width="3" stroke-linecap="round"/>
+      <path d="M136 110 Q154 104 168 112" fill="none" stroke="#8a6f62" stroke-width="3" stroke-linecap="round"/>
+      <ellipse cx="88" cy="132" rx="15" ry="6" fill="#fff" stroke="#6b5a52" stroke-width="1.5"/>
+      <circle cx="88" cy="132" r="4.5" fill="#6b5a52"/>
+      <ellipse cx="152" cy="132" rx="15" ry="6" fill="#fff" stroke="#6b5a52" stroke-width="1.5"/>
+      <circle cx="152" cy="132" r="4.5" fill="#6b5a52"/>
+      <path d="M120 140 L114 178 Q120 184 126 178" fill="none" stroke="#b9a59a" stroke-width="1.5"/>
+      <path d="M110 180 Q120 186 130 180" fill="none" stroke="#b9a59a" stroke-width="1.5"/>
+      <path d="M92 206 Q120 197 148 206 Q120 223 92 206 Z" fill="#e8b7c0" stroke="#c9879a" stroke-width="1"/>
+      <line x1="92" y1="206" x2="148" y2="206" stroke="#c9879a" stroke-width="1"/>
+      <g stroke="#c2588f" stroke-width="1" stroke-dasharray="4 3">
+        <line x1="40" y1="56" x2="214" y2="56"/>
+        <line x1="40" y1="114" x2="214" y2="114"/>
+        <line x1="40" y1="182" x2="214" y2="182"/>
+        <line x1="40" y1="206" x2="214" y2="206"/>
+        <line x1="40" y1="268" x2="214" y2="268"/>
+      </g>
+      <g stroke="#5b74a8" stroke-width="1" stroke-dasharray="2 2">
+        <line x1="92.5" y1="137" x2="92.5" y2="232"/>
+        <line x1="147.5" y1="137" x2="147.5" y2="232"/>
+      </g>
+      <g stroke="#c2588f" stroke-width="1.5" marker-start="url(#ar)" marker-end="url(#ar)">
+        <line x1="208" y1="58" x2="208" y2="112"/>
+        <line x1="208" y1="116" x2="208" y2="180"/>
+        <line x1="208" y1="184" x2="208" y2="204"/>
+        <line x1="208" y1="208" x2="208" y2="266"/>
+        <line x1="52" y1="152" x2="188" y2="152"/>
+        <line x1="74" y1="143" x2="102" y2="143"/>
+        <line x1="66" y1="127" x2="66" y2="137"/>
+        <line x1="104" y1="132" x2="136" y2="132"/>
+        <line x1="108" y1="187" x2="132" y2="187"/>
+        <line x1="93" y1="226" x2="147" y2="226"/>
+        <line x1="94" y1="236" x2="146" y2="236" stroke="#5b74a8"/>
+      </g>
+      <g font-size="12" font-weight="700" fill="#c2588f" font-family="sans-serif">
+        <text x="216" y="89">①</text><text x="216" y="152">②</text><text x="216" y="198">③</text><text x="216" y="241">④</text>
+        <text x="160" y="165">⑤</text>
+        <text x="82" y="156">⑥</text><text x="53" y="136">⑦</text><text x="114" y="127">⑧</text>
+        <text x="134" y="194">⑨</text><text x="150" y="230">⑩</text><text x="114" y="249" fill="#5b74a8">⑪</text>
+        <text x="74" y="204">⑫</text><text x="74" y="219">⑬</text>
+      </g>
+      <g font-size="10" fill="#75688a" font-family="sans-serif">
+        <text x="2" y="59">生え際</text><text x="2" y="117">眉頭の下</text><text x="2" y="185">鼻の下</text><text x="2" y="209">唇の間</text><text x="2" y="271">あご先</text>
+      </g>
+    </svg>
+    <p class="note" style="margin:0">①〜④は縦の長さ、⑤は目の高さでの顔の横幅、⑪は左右の黒目の内側どうしの幅</p>
+    </div>
+
+    <form id="manual-form" novalidate>
+      <div class="group-title"><span class="cat-dot" style="background:var(--cat-v)">縦</span>顔の縦の長さ</div>
+      <div class="card" style="padding:4px 14px">
+        <div class="field"><label class="lbl" for="m1"><span class="num">①</span>生え際 → 眉頭の下</label><input id="m1" name="m1" inputmode="decimal" placeholder="例 60"></div>
+        <div class="field"><label class="lbl" for="m2"><span class="num">②</span>眉頭の下 → 鼻の下</label><input id="m2" name="m2" inputmode="decimal" placeholder="例 62"></div>
+        <div class="field"><label class="lbl" for="m3"><span class="num">③</span>鼻の下 → 唇の合わせ目</label><input id="m3" name="m3" inputmode="decimal" placeholder="例 20"></div>
+        <div class="field"><label class="lbl" for="m4"><span class="num">④</span>唇の合わせ目 → あご先</label><input id="m4" name="m4" inputmode="decimal" placeholder="例 40"></div>
+      </div>
+
+      <div class="group-title"><span class="cat-dot" style="background:var(--cat-h)">横</span>顔の幅と目</div>
+      <div class="card" style="padding:4px 14px">
+        <div class="field"><label class="lbl" for="m5"><span class="num">⑤</span>顔の横幅（目の高さ）</label><input id="m5" name="m5" inputmode="decimal" placeholder="例 135"></div>
+        <div class="field"><label class="lbl" for="m6"><span class="num">⑥</span>目の横幅（目頭〜目尻・片目）</label><input id="m6" name="m6" inputmode="decimal" placeholder="例 27"></div>
+        <div class="field"><label class="lbl" for="m7"><span class="num">⑦</span>目の縦幅（片目）</label><input id="m7" name="m7" inputmode="decimal" placeholder="例 9"></div>
+        <div class="field"><label class="lbl" for="m8"><span class="num">⑧</span>目頭と目頭の間</label><input id="m8" name="m8" inputmode="decimal" placeholder="例 28"></div>
+      </div>
+
+      <div class="group-title"><span class="cat-dot" style="background:var(--cat-n)">鼻</span>鼻</div>
+      <div class="card" style="padding:4px 14px">
+        <div class="field"><label class="lbl" for="m9"><span class="num">⑨</span>小鼻の幅（いちばん外側どうし）</label><input id="m9" name="m9" inputmode="decimal" placeholder="例 30"></div>
+      </div>
+
+      <div class="group-title"><span class="cat-dot" style="background:var(--cat-m)">口</span>口</div>
+      <div class="card" style="padding:4px 14px">
+        <div class="field"><label class="lbl" for="m10"><span class="num">⑩</span>口の横幅（口角〜口角）</label><input id="m10" name="m10" inputmode="decimal" placeholder="例 45"></div>
+        <div class="field"><label class="lbl" for="m11"><span class="num">⑪</span>左右の黒目の内側どうしの幅</label><input id="m11" name="m11" inputmode="decimal" placeholder="例 44"></div>
+        <div class="field"><label class="lbl" for="m12"><span class="num">⑫</span>上唇の厚み</label><input id="m12" name="m12" inputmode="decimal" placeholder="例 7"></div>
+        <div class="field"><label class="lbl" for="m13"><span class="num">⑬</span>下唇の厚み</label><input id="m13" name="m13" inputmode="decimal" placeholder="例 10"></div>
+      </div>
+
+      <div class="group-title"><span class="cat-dot" style="background:var(--cat-e)">目</span>見て答える</div>
+      <div class="card">
+        <div class="q" style="margin-top:0">
+          <div class="qt">眉頭の位置は？</div>
+          <div class="chips">
+            <label><input type="radio" name="brow" value="above"><span>目頭の真上</span></label>
+            <label><input type="radio" name="brow" value="inner"><span>目頭より内側</span></label>
+            <label><input type="radio" name="brow" value="outer"><span>目頭より外側</span></label>
+          </div>
+        </div>
+        <div class="q">
+          <div class="qt">真顔のとき、口角の高さは？</div>
+          <div class="chips">
+            <label><input type="radio" name="corner" value="up"><span>唇の中央より上</span></label>
+            <label><input type="radio" name="corner" value="same"><span>ほぼ同じ</span></label>
+            <label><input type="radio" name="corner" value="down"><span>中央より下</span></label>
+          </div>
+        </div>
+      </div>
+
+      <details class="side">
+        <summary>横顔の2項目（任意・鏡で見て答える）</summary>
+        <div class="side-qs" data-scope="manual"></div>
+      </details>
+
+      <div id="manual-error" class="error hidden"></div>
+      <button type="submit" class="btn btn-primary">結果を見る</button>
+    </form>
+    <button class="btn btn-ghost" data-go="s-start">← 戻る</button>
+  </section>
+
+  <!-- 結果 -->
+  <section id="s-result" class="hidden">
+    <p class="eyebrow">RESULT</p>
+    <h2 class="display">あなたの顔バランス</h2>
+    <canvas id="result-canvas" class="photo hidden" aria-label="補助線を重ねた写真"></canvas>
+    <div class="card score-card">
+      <div class="sc-title">黄金比チェック<small>黄金比に近い項目の数（点数ではありません）</small></div>
+      <div class="sc-body">
+        <div id="res-ring" class="ring"><span><b id="res-good">0</b><small id="res-total">/14</small></span></div>
+        <ul id="res-bars" class="bars"></ul>
+      </div>
+    </div>
+
+    <div class="card summary">
+      <div class="sum-head"><span class="sum-badge">総評</span><small>解説：T CLINIC 医師監修（予定）</small></div>
+      <p id="summary-text"></p>
+    </div>
+
+    <div class="card">
+      <h3>顔の印象</h3>
+      <div class="scale">
+        <div class="bar"><div id="scale-mark" class="mark"></div></div>
+        <div class="ends"><span>幼い・かわいらしい</span><span>大人っぽい・クール</span></div>
+        <div id="scale-label" class="label"></div>
+      </div>
+    </div>
+
+    <h3 class="mt">あなたの強み</h3>
+    <div id="strengths"></div>
+
+    <h3 class="mt">整えるポイント</h3>
+    <p class="section-lead">今の状態と黄金比との差、近づける方法を部位ごとに解説します。</p>
+    <div id="points"></div>
+    <h3 id="more-title" class="mt hidden">ほかの整えるポイント</h3>
+    <div id="more-points"></div>
+
+    <div class="card doctor">
+      <h3>カウンセリングで分かること</h3>
+      <p style="font-size:14px;margin:0">写真の比率で分かるのは「黄金比とどれだけ差があるか」まで。差の原因が骨格・脂肪・皮膚・筋肉のどれなのかは、医師が実際に見て判断します。カウンセリングでは、今回の結果をもとに、原因と整え方の選択肢を確認できます。</p>
+    </div>
+
+    <div class="card coupon">
+      <p class="coupon-label">LINE限定</p>
+      <p class="coupon-title">20,000円OFF<br>クーポン発行中</p>
+      <p class="coupon-sub">結果をLINEに送ると、医師の解説とクーポンが届きます。</p>
+      <div class="coupon-cut" aria-hidden="true"></div>
+      <a id="line-btn" class="btn btn-line" href="#">結果を送ってクーポンを受け取る</a>
+      <p class="coupon-note">LINEが開き、結果が入力された状態になります。送信を押すと届きます。<br>※ 対象の施術・有効期限などの条件は、LINEでご案内します。<br><b>（試作のため、自動返信はまだ設定していません）</b></p>
+    </div>
+
+    <details class="card all">
+      <summary>14項目の数値をすべて見る</summary>
+      <div id="items-body" class="items mt"></div>
+    </details>
+
+    <p class="note">※ 美容分野で一般的に使われる比率の目安との比較です。顔立ちの美しさは比率だけで決まるものではありません。写真の角度・距離・表情で数値は変わります。医学的な診断ではありません。<br>※ mmの値は、黒目の直径（約11.7mm）を基準にした写真からの推定です。<br>※ 掲載している美容医療は、すべて自由診療（保険適用外）です。効果・ダウンタイムには個人差があり、適応は医師の診察で判断します。</p>
+    <button class="btn btn-sub" data-go="s-start">もう一度測る</button>
+  </section>
+
+</div>
+
+<script type="module">
+const LINE_ID = '@862rmedt';
+const MP_VER = '0.10.14';
+const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+const params = new URLSearchParams(location.search);
+const DEBUG = params.has('debug');
+
+const $ = (s) => document.querySelector(s);
+const avg = (...v) => v.reduce((a, b) => a + b, 0) / v.length;
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+// ---------- 画面遷移 ----------
+const SECTIONS = ['s-start', 's-photo', 's-adjust', 's-manual', 's-result'];
+function show(id) {
+  SECTIONS.forEach((s) => $('#' + s).classList.toggle('hidden', s !== id));
+  window.scrollTo(0, 0);
+}
+document.querySelectorAll('[data-go]').forEach((el) => el.addEventListener('click', () => show(el.dataset.go)));
+
+// ---------- 横顔の質問（自動・手入力で共通） ----------
+const SIDE_QS = [
+  { key: 'eline', text: '鼻先とあご先を結んだ線（Eライン）に対して、唇は？',
+    opts: [['inside', '線の内側'], ['on', '線に触れる'], ['outside', '線より外に出る'], ['', 'わからない']] },
+  { key: 'nla', text: '鼻の下と上唇がつくる角度は？',
+    opts: [['ok', '直角より少し開く（90〜110°）'], ['acute', '直角より狭い'], ['obtuse', 'かなり開いている'], ['', 'わからない']] },
+];
+document.querySelectorAll('.side-qs').forEach((box) => {
+  const scope = box.dataset.scope;
+  box.innerHTML = SIDE_QS.map((q) => `
+    <div class="q"><div class="qt">${q.text}</div><div class="chips">
+      ${q.opts.map(([v, t]) => `<label><input type="radio" name="${scope}-${q.key}" value="${v}"><span>${t}</span></label>`).join('')}
+    </div></div>`).join('');
+});
+function sideAnswers(scope) {
+  const get = (k) => (document.querySelector(`input[name="${scope}-${k}"]:checked`) || {}).value || null;
+  return { eline: get('eline'), nla: get('nla') };
+}
+
+// ---------- 顔の点（MediaPipe Face Landmarker） ----------
+// 顔の輪郭（MediaPipe FACE_OVAL の順）
+const OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
+// 小鼻の付け根の点（左右）。129/358 などは頬側に寄りすぎて小鼻を広く取ってしまう
+const ALAR = [98, 327];
+
+let landmarker = null;
+async function loadModel() {
+  if (landmarker) return landmarker;
+  const { FaceLandmarker, FilesetResolver } = await import(`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}/vision_bundle.mjs`);
+  const fileset = await FilesetResolver.forVisionTasks(`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}/wasm`);
+  landmarker = await FaceLandmarker.createFromOptions(fileset, {
+    baseOptions: { modelAssetPath: MODEL_URL, delegate: 'CPU' },
+    runningMode: 'IMAGE',
+    numFaces: 1,
+  });
+  return landmarker;
+}
+
+const photo = {};  // aligned: 回転補正後の画像, P: 回転補正後の点(px), auto: 自動の線, adj: 調整後の線, crop: 表示範囲
+function setStatus(t) { $('#photo-status').textContent = t; }
+function setPhotoError(t) {
+  const el = $('#photo-error');
+  el.classList.toggle('hidden', !t);
+  el.innerHTML = t || '';
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+async function processImage(img) {
+  setPhotoError('');
+  setStatus('計測の準備をしています…（初回のみ数秒）');
+  try {
+    await loadModel();
+  } catch (e) {
+    console.error(e);
+    setStatus('');
+    setPhotoError('自動計測を読み込めませんでした。通信環境を確認して、もう一度お試しください。<br><button class="btn btn-sub mt" id="to-manual">自分で測って入力する</button>');
+    $('#to-manual').addEventListener('click', () => show('s-manual'));
+    return;
+  }
+  setStatus('顔の位置を読み取っています…');
+  // 長辺1280pxに縮小してから検出
+  const scale = Math.min(1, 1280 / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.round(img.naturalWidth * scale), h = Math.round(img.naturalHeight * scale);
+  const src = document.createElement('canvas');
+  src.width = w; src.height = h;
+  src.getContext('2d').drawImage(img, 0, 0, w, h);
+  let res;
+  try {
+    res = landmarker.detect(src);
+  } catch (e) {
+    console.error(e);
+    setStatus('');
+    setPhotoError('読み取り中にエラーが起きました。別の写真でお試しください。');
+    return;
+  }
+  const lm = res.faceLandmarks && res.faceLandmarks[0];
+  if (!lm) {
+    setStatus('');
+    setPhotoError('顔が見つかりませんでした。真正面・明るい場所・前髪を上げた写真でお試しください。');
+    return;
+  }
+  setStatus('');
+  prepareAligned(src, lm);
+  show('s-adjust');
+  drawAdjust();
+}
+
+// 両目の黒目を結ぶ線が水平になるよう回転して、以降はx=横・y=縦で測る
+function prepareAligned(src, lm) {
+  const w = src.width, h = src.height;
+  const raw = lm.map((p) => ({ x: p.x * w, y: p.y * h }));
+  const a = raw[468], b = raw[473];
+  const [left, right] = a.x < b.x ? [a, b] : [b, a];
+  const ang = Math.atan2(right.y - left.y, right.x - left.x);
+  const c = { x: (left.x + right.x) / 2, y: (left.y + right.y) / 2 };
+  const cos = Math.cos(-ang), sin = Math.sin(-ang);
+  const P = raw.map((p) => ({ x: c.x + (p.x - c.x) * cos - (p.y - c.y) * sin, y: c.y + (p.x - c.x) * sin + (p.y - c.y) * cos }));
+  const aligned = document.createElement('canvas');
+  aligned.width = w; aligned.height = h;
+  const ctx = aligned.getContext('2d');
+  ctx.fillStyle = '#eee';
+  ctx.fillRect(0, 0, w, h);
+  ctx.translate(c.x, c.y); ctx.rotate(-ang); ctx.translate(-c.x, -c.y);
+  ctx.drawImage(src, 0, 0);
+
+  // 自動で引く線の位置
+  const x = (i) => P[i].x, y = (i) => P[i].y;
+  const topY = y(10), L = y(152) - topY;
+  const eyeY = avg(y(33), y(133), y(362), y(263));
+  const ovalXs = OVAL.map(x);
+  const contour = ovalAt(P, eyeY) || [Math.min(...ovalXs), Math.max(...ovalXs)];
+  const alarXs = ALAR.map(x);
+  const auto = {
+    hair: topY - L * 0.15,
+    brow: avg(y(55), y(285)),
+    sub: y(2),
+    stom: avg(y(13), y(14)),
+    chin: y(152),
+    cL: contour[0],
+    oL: Math.min(x(33), x(263)),
+    iL: Math.min(x(133), x(362)),
+    iR: Math.max(x(133), x(362)),
+    oR: Math.max(x(33), x(263)),
+    cR: contour[1],
+    eyeTop: avg(y(159), y(386)),
+    eyeBot: avg(y(145), y(374)),
+    alarL: Math.min(...alarXs),
+    alarR: Math.max(...alarXs),
+    lipTop: y(0),
+    lipBot: y(17),
+    mouthL: Math.min(x(61), x(291)),
+    mouthR: Math.max(x(61), x(291)),
+  };
+  Object.assign(photo, { aligned, P, w, h, eyeY, auto, adj: Object.assign({}, auto), step: 'v', sel: 'hair' });
+
+  // 横向きチェック：左右の目の幅の差
+  const wl = Math.abs(x(133) - x(33)), wr = Math.abs(x(263) - x(362));
+  const sym = Math.min(wl, wr) / Math.max(wl, wr);
+  photo.yawWarn = sym < 0.85;
+  $('#yaw-warn').textContent = '顔が少し横を向いているかもしれません（左右の目の幅が違って写っています）。数値がずれやすいので、真正面の写真がおすすめです。';
+  setStep('v');
+}
+
+function setupCanvas(canvas, crop) {
+  const cw = crop.x1 - crop.x0, ch = crop.y1 - crop.y0;
+  // 拡大して見せる範囲でも線や文字が粗くならないよう、最低640pxで描く
+  const W = Math.round(Math.max(640, Math.min(1000, cw)));
+  const s = W / cw;
+  canvas.width = W;
+  canvas.height = Math.round(ch * s);
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(photo.aligned, crop.x0, crop.y0, cw, ch, 0, 0, canvas.width, canvas.height);
+  // u：スマホ幅で表示したときの約1px
+  return { ctx, s, X: (x) => (x - crop.x0) * s, Y: (y) => (y - crop.y0) * s, W, H: canvas.height, u: W / 360 };
+}
+
+function hLine(g, y, color, dash, width) {
+  const { ctx } = g;
+  ctx.save();
+  ctx.strokeStyle = color; ctx.lineWidth = (width || 1.5) * g.u; ctx.setLineDash((dash || []).map((d) => d * g.u));
+  ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(g.W, y); ctx.stroke();
+  ctx.restore();
+}
+function vLine(g, x, y0, y1, color, dash) {
+  const { ctx } = g;
+  ctx.save();
+  ctx.strokeStyle = color; ctx.lineWidth = 1.5 * g.u; ctx.setLineDash((dash || []).map((d) => d * g.u));
+  ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y1); ctx.stroke();
+  ctx.restore();
+}
+function label(g, text, x, y, color, align) {
+  const { ctx } = g;
+  const fs = Math.max(12, Math.round(g.W * 0.032));
+  ctx.save();
+  ctx.font = `700 ${fs}px sans-serif`;
+  ctx.textAlign = align || 'left';
+  ctx.textBaseline = 'middle';
+  ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(255,255,255,.9)';
+  ctx.strokeText(text, x, y);
+  ctx.fillStyle = color; ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
+// ---------- 線の調整 ----------
+// axis: y＝横向きの線（上下に動かす）、x＝縦向きの線（左右に動かす）
+const LINES = {
+  v: [
+    { key: 'hair', name: '生え際', axis: 'y' },
+    { key: 'brow', name: '眉頭の下', axis: 'y' },
+    { key: 'sub', name: '鼻の下', axis: 'y' },
+    { key: 'stom', name: '唇の合わせ目', axis: 'y' },
+    { key: 'chin', name: 'あご先', axis: 'y' },
+  ],
+  h: [
+    { key: 'cL', name: '輪郭（左）', axis: 'x' },
+    { key: 'oL', name: '目尻（左）', axis: 'x' },
+    { key: 'iL', name: '目頭（左）', axis: 'x' },
+    { key: 'iR', name: '目頭（右）', axis: 'x' },
+    { key: 'oR', name: '目尻（右）', axis: 'x' },
+    { key: 'cR', name: '輪郭（右）', axis: 'x' },
+  ],
+  p: [
+    { key: 'eyeTop', name: '目の上', axis: 'y' },
+    { key: 'eyeBot', name: '目の下', axis: 'y' },
+    { key: 'alarL', name: '小鼻（左）', axis: 'x' },
+    { key: 'alarR', name: '小鼻（右）', axis: 'x' },
+    { key: 'lipTop', name: '上唇の上', axis: 'y' },
+    { key: 'lipBot', name: '下唇の下', axis: 'y' },
+    { key: 'mouthL', name: '口角（左）', axis: 'x' },
+    { key: 'mouthR', name: '口角（右）', axis: 'x' },
+  ],
+};
+const lineOf = (key) => Object.values(LINES).flat().find((l) => l.key === key);
+
+// ステップごとに写真の見せる範囲を変える（パーツは拡大して細かく合わせられるように）
+function stepCrop(step) {
+  const A = photo.adj, fw = A.cR - A.cL, L = A.chin - A.hair;
+  let c;
+  if (step === 'h') c = { x0: A.cL - fw * 0.1, x1: A.cR + fw * 0.1, y0: photo.eyeY - fw * 0.32, y1: photo.eyeY + fw * 0.32 };
+  else if (step === 'p') c = { x0: A.oL - fw * 0.06, x1: A.oR + fw * 0.06, y0: A.eyeTop - L * 0.07, y1: A.lipBot + L * 0.06 };
+  else c = { x0: A.cL - fw * 0.22, x1: A.cR + fw * 0.22, y0: A.hair - L * 0.18, y1: A.chin + L * 0.08 };
+  return { x0: Math.max(0, c.x0), y0: Math.max(0, c.y0), x1: Math.min(photo.w, c.x1), y1: Math.min(photo.h, c.y1) };
+}
+
+// 線の両端（画像の座標）
+function segOf(l) {
+  const A = photo.adj, cr = photo.crop, fw = A.cR - A.cL, L = A.chin - A.hair;
+  const v = A[l.key];
+  if (photo.step === 'p') {
+    if (l.key === 'eyeTop' || l.key === 'eyeBot') return [A.oL - fw * 0.02, v, A.oR + fw * 0.02, v];
+    if (l.key === 'lipTop' || l.key === 'lipBot') return [A.mouthL - fw * 0.03, v, A.mouthR + fw * 0.03, v];
+    if (l.key === 'alarL' || l.key === 'alarR') return [v, A.sub - L * 0.09, v, A.sub + L * 0.02];
+    return [v, A.stom - L * 0.05, v, A.stom + L * 0.05];
+  }
+  return l.axis === 'y' ? [cr.x0, v, cr.x1, v] : [v, cr.y0, v, cr.y1];
+}
+
+// 線の確認は「縦の線 → 横の線 → パーツ」の順に1画面ずつ進む
+const STEPS = ['v', 'h', 'p'];
+const STEP_TEXT = {
+  v: { title: '縦の線を確認する', lead: '生え際・眉頭の下・鼻の下・唇の合わせ目・あご先の5本が、写真に合っているか確認してください。ずれている線は、写真の上でなぞるか、選んで矢印で動かせます。', next: '次へ：横の線を確認する', back: '← 写真を選び直す' },
+  h: { title: '横の線を確認する', lead: '目の高さで、輪郭・目尻・目頭（左右）の6本が合っているか確認してください。', next: '次へ：パーツの線を確認する', back: '← 縦の線に戻る' },
+  p: { title: 'パーツの線を確認する', lead: '目の上下・小鼻・唇の上下・口角の線が合っているか確認してください。最後に「この線で計測する」を押すと結果が出ます。', next: 'この線で計測する', back: '← 横の線に戻る' },
+};
+
+function setStep(step) {
+  photo.step = step;
+  photo.crop = stepCrop(step);
+  if (!LINES[step].some((l) => l.key === photo.sel)) photo.sel = LINES[step][0].key;
+  const idx = STEPS.indexOf(step);
+  document.querySelectorAll('.steps li').forEach((li, i) => {
+    li.classList.toggle('done', i < idx);
+    li.classList.toggle('current', i === idx);
+    li.querySelector('.num').textContent = i < idx ? '✓' : String(i + 1);
+    const b = li.querySelector('button');
+    b.disabled = i >= idx;  // 戻れるのは終わったステップだけ
+    if (i === idx) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current');
+  });
+  const t = STEP_TEXT[step];
+  $('#adjust-title').textContent = `STEP ${idx + 1}　${t.title}`;
+  $('#adjust-lead').textContent = t.lead;
+  $('#adjust-next').textContent = t.next;
+  $('#adjust-back').textContent = t.back;
+  $('#yaw-warn').classList.toggle('hidden', !(step === 'v' && photo.yawWarn));
+  $('#side-details').classList.toggle('hidden', step !== 'p');
+  $('#adjust-error').classList.add('hidden');
+  $('#line-chips').innerHTML = LINES[step].map((l) => `<button type="button" data-line="${l.key}">${l.name}</button>`).join('');
+  $('#line-chips').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => selectLine(b.dataset.line)));
+  selectLine(photo.sel);
+}
+
+function goStep(step) {
+  setStep(step);
+  window.scrollTo(0, 0);
+}
+
+function selectLine(key) {
+  photo.sel = key;
+  const l = lineOf(key);
+  $('#line-chips').querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.line === key)));
+  $('#line-name').textContent = l.name;
+  $('#nudge-minus').textContent = l.axis === 'y' ? '▲' : '◀';
+  $('#nudge-plus').textContent = l.axis === 'y' ? '▼' : '▶';
+  $('#nudge-minus').setAttribute('aria-label', `${l.name}の線を${l.axis === 'y' ? '上' : '左'}へ動かす`);
+  $('#nudge-plus').setAttribute('aria-label', `${l.name}の線を${l.axis === 'y' ? '下' : '右'}へ動かす`);
+  drawAdjust();
+}
+
+function drawAdjust() {
+  const g = setupCanvas($('#adjust-canvas'), photo.crop);
+  const { ctx } = g;
+  const fs = Math.max(12, Math.round(g.W * 0.034));
+  LINES[photo.step].forEach((l) => {
+    const on = l.key === photo.sel;
+    const [x0, y0, x1, y1] = segOf(l);
+    ctx.save();
+    ctx.strokeStyle = on ? '#ff4f97' : 'rgba(125,92,200,.85)';
+    ctx.lineWidth = (on ? 2.5 : 1.5) * g.u;
+    ctx.setLineDash(on ? [] : [5 * g.u, 4 * g.u]);
+    ctx.shadowColor = 'rgba(255,255,255,.9)';
+    ctx.shadowBlur = 3;
+    ctx.beginPath(); ctx.moveTo(g.X(x0), g.Y(y0)); ctx.lineTo(g.X(x1), g.Y(y1)); ctx.stroke();
+    ctx.restore();
+    if (on) {
+      // つまみ（ここを動かせることが分かるように）
+      const hx = l.axis === 'y' ? g.X(x1) - fs * 1.6 : g.X(x0);
+      const hy = l.axis === 'y' ? g.Y(y0) : g.Y(y1) - fs * 1.6;
+      ctx.save();
+      ctx.fillStyle = '#ff4f97';
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(hx, hy, fs * 0.75, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#fff';
+      ctx.font = `700 ${fs}px sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(l.axis === 'y' ? '↕' : '↔', hx, hy + 1);
+      ctx.restore();
+    }
+    if (on || (l.axis === 'y' && photo.step === 'v')) {
+      const tx = l.axis === 'y' ? Math.max(8, g.X(x0) + 8) : g.X(x0);
+      const ty = l.axis === 'y' ? g.Y(y0) - fs * 0.85 : g.Y(y0) + fs;
+      label(g, l.name, tx, ty, on ? '#ff4f97' : '#6b4f9e', l.axis === 'y' ? 'left' : 'center');
+    }
+  });
+  if (DEBUG) drawDebug(g);
+}
+
+function drawDebug(g) {
+  const ids = [10, 152, 2, 0, 13, 14, 17, 61, 291, 33, 133, 159, 145, 362, 263, 386, 374, 55, 107, 285, 336, 468, 473, ...ALAR];
+  const { ctx } = g;
+  ctx.save();
+  ctx.font = `${Math.round(g.W * 0.018)}px sans-serif`;
+  ids.forEach((i) => {
+    const p = photo.P[i];
+    ctx.fillStyle = ALAR.includes(i) ? '#00a' : '#0a0';
+    ctx.beginPath(); ctx.arc(g.X(p.x), g.Y(p.y), 3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillText(String(i), g.X(p.x) + 4, g.Y(p.y) - 4);
+  });
+  ctx.strokeStyle = 'rgba(0,0,170,.5)'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  OVAL.forEach((i, k) => { const p = photo.P[i]; k ? ctx.lineTo(g.X(p.x), g.Y(p.y)) : ctx.moveTo(g.X(p.x), g.Y(p.y)); });
+  ctx.closePath(); ctx.stroke();
+  ctx.restore();
+}
+
+function moveLine(key, value) {
+  const l = lineOf(key), cr = photo.crop;
+  photo.adj[key] = l.axis === 'y' ? Math.min(cr.y1, Math.max(cr.y0, value)) : Math.min(cr.x1, Math.max(cr.x0, value));
+  drawAdjust();
+}
+
+// 写真をなぞって動かす：触った位置にいちばん近い線を選び、指の移動量だけ動かす
+(function setupDrag() {
+  const cv = $('#adjust-canvas');
+  let drag = null;
+  const toImage = (e) => {
+    const r = cv.getBoundingClientRect(), cr = photo.crop;
+    return { x: cr.x0 + ((e.clientX - r.left) / r.width) * (cr.x1 - cr.x0), y: cr.y0 + ((e.clientY - r.top) / r.height) * (cr.y1 - cr.y0), scale: r.width / (cr.x1 - cr.x0) };
+  };
+  cv.addEventListener('pointerdown', (e) => {
+    const p = toImage(e);
+    let best = null;
+    LINES[photo.step].forEach((l) => {
+      const [x0, y0, x1, y1] = segOf(l);
+      const along = l.axis === 'y' ? p.x >= Math.min(x0, x1) - 20 / p.scale && p.x <= Math.max(x0, x1) + 20 / p.scale
+                                   : p.y >= Math.min(y0, y1) - 20 / p.scale && p.y <= Math.max(y0, y1) + 20 / p.scale;
+      const d = (l.axis === 'y' ? Math.abs(p.y - y0) : Math.abs(p.x - x0)) * p.scale;
+      if (along && d < 28 && (!best || d < best.d)) best = { l, d };
+    });
+    if (!best) return;
+    e.preventDefault();
+    cv.setPointerCapture(e.pointerId);
+    selectLine(best.l.key);
+    drag = { key: best.l.key, axis: best.l.axis, start: best.l.axis === 'y' ? p.y : p.x, value: photo.adj[best.l.key] };
+  });
+  cv.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const p = toImage(e);
+    moveLine(drag.key, drag.value + (drag.axis === 'y' ? p.y : p.x) - drag.start);
+  });
+  const end = () => { drag = null; };
+  cv.addEventListener('pointerup', end);
+  cv.addEventListener('pointercancel', end);
+
+  // 矢印：1回押すと画面上で約1px、押しっぱなしで連続して動く
+  const nudge = (dir) => {
+    const l = lineOf(photo.sel), r = cv.getBoundingClientRect(), cr = photo.crop;
+    const step = l.axis === 'y' ? (cr.y1 - cr.y0) / r.height : (cr.x1 - cr.x0) / r.width;
+    moveLine(photo.sel, photo.adj[photo.sel] + dir * step);
+  };
+  [['#nudge-minus', -1], ['#nudge-plus', 1]].forEach(([sel, dir]) => {
+    const btn = $(sel);
+    let hold = null;
+    const stop = () => { clearTimeout(hold); clearInterval(hold); hold = null; };
+    btn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      nudge(dir);
+      hold = setTimeout(() => { hold = setInterval(() => nudge(dir), 50); }, 350);
+    });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => btn.addEventListener(ev, stop));
+    btn.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); nudge(dir); } });
+  });
+  $('#line-reset').addEventListener('click', () => moveLine(photo.sel, photo.auto[photo.sel]));
+  document.querySelectorAll('.steps button').forEach((b) => b.addEventListener('click', () => goStep(b.dataset.step)));
+})();
+
+// 顔の輪郭が高さyを横切るx（左右）
+function ovalAt(P, y) {
+  const xs = [];
+  for (let k = 0; k < OVAL.length; k++) {
+    const a = P[OVAL[k]], b = P[OVAL[(k + 1) % OVAL.length]];
+    if ((a.y - y) * (b.y - y) <= 0 && a.y !== b.y) xs.push(a.x + (y - a.y) * (b.x - a.x) / (b.y - a.y));
+  }
+  return xs.length >= 2 ? [Math.min(...xs), Math.max(...xs)] : null;
+}
+
+// 線の順番が入れ替わっていないか（入れ替わっていたら、その線の名前を返す）
+const ORDERS = {
+  v: [['hair', 'brow', 'sub', 'stom', 'chin']],
+  h: [['cL', 'oL', 'iL', 'iR', 'oR', 'cR']],
+  p: [['eyeTop', 'eyeBot'], ['alarL', 'alarR'], ['lipTop', 'stom', 'lipBot'], ['mouthL', 'mouthR']],
+};
+function lineOrderError(steps) {
+  const A = photo.adj;
+  for (const o of steps.flatMap((st) => ORDERS[st])) {
+    for (let i = 1; i < o.length; i++) {
+      if (A[o[i]] <= A[o[i - 1]]) return `「${lineOf(o[i - 1]).name}」と「${lineOf(o[i]).name}」の線の順番が入れ替わっています。位置を確認してください。`;
+    }
+  }
+  return '';
+}
+
+// ---------- 写真から長さを取る（調整後の線を使う） ----------
+function measureAuto() {
+  const { P } = photo, A = photo.adj;
+  const x = (i) => P[i].x, y = (i) => P[i].y;
+  const eyeWL = A.iL - A.oL, eyeWR = A.oR - A.iR;
+  const eyeW = avg(eyeWL, eyeWR);
+  const innerGap = A.iR - A.iL;
+  const faceW = A.cR - A.cL;
+  // 眉頭の位置・黒目・口角の高さは、自動で取った点を使う
+  const midX = avg(A.iL, A.iR);
+  const brows = [avg(x(55), x(107)), avg(x(285), x(336))].sort((a, b) => a - b);
+  const browOffset = avg(Math.abs(A.iL - midX) - Math.abs(brows[0] - midX), Math.abs(A.iR - midX) - Math.abs(brows[1] - midX)) / eyeW;
+  const ring = (c, ids) => avg(...ids.map((i) => dist(P[i], P[c])));
+  const rA = ring(468, [469, 470, 471, 472]), rB = ring(473, [474, 475, 476, 477]);
+  const mouthW = A.mouthR - A.mouthL;
+  return {
+    thirds: [A.brow - A.hair, A.sub - A.brow, A.chin - A.sub],
+    noseToStom: A.stom - A.sub,
+    stomToChin: A.chin - A.stom,
+    faceLen: A.chin - A.hair,
+    faceWidthMax: faceW,
+    faceWidthEye: faceW,
+    fifths: [A.oL - A.cL, eyeWL, innerGap, eyeWR, A.cR - A.oR],
+    eyeW,
+    eyeH: A.eyeBot - A.eyeTop,
+    innerGap,
+    browOffset,
+    alarW: A.alarR - A.alarL,
+    noseLen: A.sub - A.brow,
+    mouthW,
+    irisInnerGap: Math.abs(x(473) - x(468)) - rA - rB,
+    pxPerMm: (rA + rB) / 11.7,  // 黒目の直径を約11.7mmとして換算
+    upperLip: A.stom - A.lipTop,
+    lowerLip: A.lipBot - A.stom,
+    cornerLift: (A.stom - avg(y(61), y(291))) / mouthW,
+    side: sideAnswers('auto'),
+    lines: Object.assign({ eyeY: photo.eyeY }, A),
+  };
+}
+
+// 次へ：そのステップまでの線の順番を確かめてから進む。最後のステップでは計測する
+$('#adjust-next').addEventListener('click', () => {
+  const idx = STEPS.indexOf(photo.step);
+  const err = lineOrderError(STEPS.slice(0, idx + 1));
+  $('#adjust-error').textContent = err;
+  $('#adjust-error').classList.toggle('hidden', !err);
+  if (err) return;
+  if (idx < STEPS.length - 1) {
+    goStep(STEPS[idx + 1]);
+    return;
+  }
+  const m = measureAuto();
+  const result = evaluate(m);
+  renderResult(result, m, 'auto');
+});
+$('#adjust-back').addEventListener('click', () => {
+  const idx = STEPS.indexOf(photo.step);
+  if (idx === 0) show('s-photo');
+  else goStep(STEPS[idx - 1]);
+});
+
+// ---------- 手入力から長さを取る ----------
+$('#manual-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const v = (id) => {
+    const s = ($('#' + id).value || '').replace(/[０-９．]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).trim();
+    const n = parseFloat(s);
+    return n > 0 ? n : null;
+  };
+  const [m1, m2, m3, m4, m5, m6, m7, m8, m9, m10, m11, m12, m13] = Array.from({ length: 13 }, (_, i) => v('m' + (i + 1)));
+  const radio = (n) => (document.querySelector(`input[name="${n}"]:checked`) || {}).value || null;
+  const m = { side: sideAnswers('manual'), browChoice: radio('brow'), cornerChoice: radio('corner') };
+  if (m1 && m2 && m3 && m4) { m.thirds = [m1, m2, m3 + m4]; m.faceLen = m1 + m2 + m3 + m4; }
+  if (m3 && m4) { m.noseToStom = m3; m.stomToChin = m4; }
+  if (m5) { m.faceWidthEye = m5; m.faceWidthMax = m5; }
+  if (m6) m.eyeW = m6;
+  if (m7) m.eyeH = m7;
+  if (m8) m.innerGap = m8;
+  if (m9) m.alarW = m9;
+  if (m2 && m.faceLen) m.noseLen = m2;
+  if (m10) m.mouthW = m10;
+  if (m11) m.irisInnerGap = m11;
+  if (m12) m.upperLip = m12;
+  if (m13) m.lowerLip = m13;
+  const result = evaluate(m);
+  const measured = result.items.filter((it) => it.status !== 'skip').length;
+  const err = $('#manual-error');
+  if (measured < 3) {
+    err.textContent = '判定できる項目が少なすぎます。もう少し入力してください（目安：縦の①〜④と、目の⑥・⑧）。';
+    err.classList.remove('hidden');
+    return;
+  }
+  err.classList.add('hidden');
+  renderResult(result, m, 'manual');
+});
+
+// ---------- 判定 ----------
+const CATS = [
+  { key: 'v', name: '縦', color: 'var(--cat-v)' },
+  { key: 'h', name: '横', color: 'var(--cat-h)' },
+  { key: 'e', name: '目', color: 'var(--cat-e)' },
+  { key: 'n', name: '鼻', color: 'var(--cat-n)' },
+  { key: 'm', name: '口', color: 'var(--cat-m)' },
+];
+const STATUS_TEXT = { good: '黄金比に近い', slight: 'ややズレ', off: 'ズレ', skip: '未計測' };
+
+// ズレ別の解説。look＝こう見えやすい、cause＝原因の例、concerns＝お悩みチェック、
+// makeup＝メイクで近づける（img は PDF「顔の黄金比セルフ診断BOOK」の図解）、tx＝美容医療の選択肢 [TX のキー, どう近づくか]
+// ※ 文言は医師の監修前の仮のもの
+const PATTERNS = {
+  forehead_long: {
+    look: 'おでこが広く、知的で大人っぽい印象。一方で、顔全体が縦に長く見えやすい部分です。',
+    cause: '生え際の位置や、おでこの丸み・高さで長さの見え方が変わります。',
+    concerns: ['おでこが広く見える', '前髪がないと落ち着かない', '顔が長く見える'],
+    makeup: { img: 'forehead_long', steps: ['生え際に沿ってシェーディングを入れ、おでこの面積を小さく見せる', '前髪や後れ毛で、生え際のラインをやわらかくする', '眉はやや太めに描き、目元に重心を置く'] },
+    tx: [],
+  },
+  forehead_short: {
+    look: 'おでこがコンパクトで、可愛らしく親しみやすい印象。一方で、眉〜生え際が詰まって窮屈に見えやすい部分です。',
+    cause: '生え際の位置や、眉の高さで見え方が変わります。',
+    concerns: ['おでこが狭く見える', '前髪を上げにくい', '眉と生え際が近い'],
+    makeup: { steps: ['前髪は薄めにして、おでこを少し見せる', '眉山をやや高めに描き、眉の上に余白をつくる', 'おでこの中央に縦長のハイライトを入れる'] },
+    tx: [],
+  },
+  mid_long: {
+    look: '目から鼻下までの距離が長く、大人っぽく落ち着いた印象。一方で、顔が長く見えたり、疲れて見えたりしやすい部分です。',
+    cause: '頬や上あごの骨格に加えて、目の下のふくらみ・くぼみ（影）があると、中顔面は実際より長く見えます。',
+    concerns: ['顔が長く見える', '目の下が疲れて見える・クマが気になる', '実年齢より上に見られる'],
+    makeup: { img: 'mid_long', steps: ['涙袋と下まぶたを強調して、目の位置を下に見せる', 'チークは頬の高い位置に横長に入れ、縦の長さを分ける', '鼻筋のハイライトは短めにして、鼻先まで伸ばさない'] },
+    tx: [['kuma', '目の下のふくらみや影を整え、目の下〜鼻下が間延びして見えにくくする'], ['hyal', '涙袋をつくり、目の位置を下に見せる'], ['regen', '目の下のくぼみや影をやわらげる']],
+  },
+  mid_short: {
+    look: '目から鼻下までがコンパクトで、幼く可愛らしい印象。一方で、パーツが中央に詰まって見えやすい部分です。',
+    cause: '上あごの骨格や、鼻の長さで見え方が変わります。',
+    concerns: ['幼く見られる', 'パーツが中央に寄って見える', '大人っぽい雰囲気にしたい'],
+    makeup: { steps: ['ハイライトを眉間〜鼻先まで通して、縦の長さを出す', 'チークは縦長・高めに入れる', '涙袋は控えめにして、目の下に余白を残す'] },
+    tx: [],
+  },
+  lower_long: {
+    look: '口からあごまでが長く、大人っぽくクールな印象。一方で、面長に見えやすい部分です。',
+    cause: 'あごの骨の長さや、あご先の脂肪・筋肉のつき方で見え方が変わります。',
+    concerns: ['あごが長く見える', '面長に見える', '口元が間延びして見える'],
+    makeup: { img: 'lower_long', steps: ['あご先にシェーディングを入れて長さを削る', 'チークは高め・横長に入れて、重心を上に', 'リップは横幅を意識して、縦長に見せない'] },
+    tx: [],
+  },
+  lower_short: {
+    look: '鼻の下が長く、口〜あごが短めで、やさしく幼い印象。一方で、口元が下がって見えたり、間延びして見えたりしやすい部分です。',
+    cause: 'あご先の骨格が小さい・後ろに下がっている場合や、上唇が薄い場合に起こりやすいバランスです。',
+    concerns: ['鼻の下が長く見える', 'あごが小さい・引っ込んで見える', '口元が間延びして見える'],
+    makeup: { img: 'philtrum_long', steps: ['上唇だけ約1mmオーバーに描く', '鼻の下にごく薄い影を入れて、距離を詰める', '上唇の山にハイライトを入れ、唇の位置を上へ'] },
+    tx: [['hyal', 'あご先に高さを出したり、上唇にボリュームを足したりして、口〜あごの比率を整える'], ['eline', '糸であご先を前・下に出し、あごの長さを補う']],
+  },
+  wide_face: {
+    look: '横幅に丸みがあり、やさしく若々しい印象。一方で、顔が大きく見えたり、丸顔に見えたりしやすい部分です。',
+    cause: '骨格（エラ・頬骨）、噛む筋肉（咬筋）、頬やあご下の脂肪、たるみのどれが原因かで、整え方が変わります。',
+    concerns: ['顔が大きく見える', 'エラが気になる', '頬・フェイスラインのもたつき'],
+    makeup: { img: 'wide_face', steps: ['エラ下〜フェイスラインにシェーディングを入れる', 'おでこの中央とあご先に縦のハイライトを入れ、縦の長さを強調', 'チークは頬の中心に縦長に入れる'] },
+    tx: [['botox_era', '噛む筋肉（咬筋）が原因の場合に、筋肉を小さくしてエラの張りを抑える'], ['buccal', '頬の奥の脂肪を減らし、頬下〜フェイスラインをすっきり見せる'], ['shibou', '頬・あご下の脂肪を減らして輪郭を引き締める'], ['ito', 'たるみによるもたつきを引き上げる']],
+  },
+  long_face: {
+    look: '縦にすらりと長く、大人っぽく上品な印象。一方で、面長に見えやすい部分です。',
+    cause: '顔の骨格の縦の長さや、頬のボリュームで見え方が変わります。',
+    concerns: ['面長に見える', '大人っぽく見られすぎる', '頬がこけて見える'],
+    makeup: { steps: ['おでこの上とあご先にシェーディングを入れる', 'チークは横長に入れて、縦の長さを分ける', '前髪をつくり、おでこの縦の長さを隠す'] },
+    tx: [['hyal', '頬やこめかみにボリュームを足し、横幅とのバランスを整える']],
+  },
+  eye_small: {
+    look: '目元が控えめで、やさしく上品な印象。一方で、顔の余白が目立ちやすい部分です。',
+    cause: '目の横幅（目頭・目尻の開き）と、まぶたの開き具合で見え方が変わります。',
+    concerns: ['目が小さく見える', '顔の余白が目立つ', 'すっぴんの目元がさみしい'],
+    makeup: { img: 'eye_small', steps: ['目尻を上下“くの字”で囲み、横幅を外へ広げる', 'アイホールに中間色のグラデーションで奥行きをつくる', '黒目の上に細かいラメを置き、光で大きく見せる'] },
+    tx: [['mejiri', '目尻側に横幅を出して、目を大きく見せる'], ['megashira', '目頭側に横幅を出す'], ['futae', '二重のラインで、目の開きを大きく見せる']],
+  },
+  eye_narrow: {
+    look: '切れ長でクールな印象。一方で、眠そう・不機嫌そうに見られやすい部分です。',
+    cause: 'まぶたの厚みやたるみ、二重の幅、目を開ける力のどれが原因かで、整え方が変わります。',
+    concerns: ['眠そう・不機嫌そうに見られる', '奥二重・一重で目が小さく見える', 'まぶたが重い'],
+    makeup: { img: 'eye_narrow', steps: ['涙袋にハイライト＋下に薄い影を入れて、縦幅を下へ広げる', 'アイラインは黒目の上だけ少し太くする', '下まぶたの目尻1/3に、ブラウンで縦にフレーミング'] },
+    tx: [['futae', '二重のラインをつくり、目の開きを縦に見せる'], ['futae_sekkai', '二重のラインをしっかり固定する'], ['mayushita', 'まぶたのたるみを取り、目の開きを良く見せる'], ['mabuta_shibou', 'まぶたの厚み（脂肪）を減らす']],
+  },
+  eye_wide_set: {
+    look: '目と目の間が広く、やさしく可愛らしい印象。一方で、ぼんやりして見えやすい部分です。',
+    cause: '目頭にかぶさる皮膚（蒙古ひだ）の張り方で、目と目の間隔の見え方が変わります。',
+    concerns: ['目と目が離れて見える', 'ぼんやりした印象と言われる', '目頭が丸く隠れている'],
+    makeup: { img: 'eye_wide_set', steps: ['眉頭を内側へ3〜5mm描き足し、目と目の間を詰める', '眉頭の下〜目頭横のくぼみに、細いノーズシャドウ', '目頭側にラインと締め色を置き、重心を内側へ'] },
+    tx: [['megashira', '目頭にかぶさる皮膚を調整し、目と目の間を狭める']],
+  },
+  eye_close_set: {
+    look: '目と目の間が近く、凛としたシャープな印象。一方で、きつく見られやすい部分です。',
+    cause: '目の横幅や、目尻の開き方で見え方が変わります。',
+    concerns: ['目が寄って見える', 'きつい印象に見られる', '目尻が上がって見える'],
+    makeup: { img: 'eye_close_set', steps: ['目尻のラインを3〜5mm、水平に延長する', '締め色は目尻側1/3に集中させる', '目頭にハイライト。眉頭は描き足さず、間隔を保つ'] },
+    tx: [['mejiri', '目尻側に広げて、目と目の間とのバランスを整える']],
+  },
+  brow_inner: {
+    look: '眉頭が近く、意志の強いキリッとした印象。一方で、きつく見えたり、目と目が寄って見えたりしやすい部分です。',
+    cause: '眉の生え方と、眉の描き方で見え方が変わります。',
+    concerns: ['眉頭が近く、きつく見える', '眉の形が決まらない', '眉間が狭く見える'],
+    makeup: { steps: ['眉頭の内側の毛を、コンシーラーで整える', '目頭の真上から眉を描き始める', '眉頭はぼかして、眉尻に向けて濃くする'] },
+    tx: [],
+  },
+  brow_outer: {
+    look: '眉頭が離れていて、やさしく穏やかな印象。一方で、ぼんやり見えやすい部分です。',
+    cause: '眉の生え方と、眉の描き方で見え方が変わります。',
+    concerns: ['眉と眉が離れて見える', '眉の形が決まらない', '顔がぼんやりして見える'],
+    makeup: { steps: ['眉頭を目頭の真上まで描き足す', '眉頭の下に、ごく薄いノーズシャドウをつなげる', '眉頭はパウダーでふんわり描き、描いた感を出さない'] },
+    tx: [],
+  },
+  nose_wide: {
+    look: '小鼻がしっかりして、親しみやすい印象。一方で、鼻が大きく見えたり、顔の中心がどっしり見えたりしやすい部分です。',
+    cause: '小鼻の張り出しや、鼻の穴の大きさ、鼻先の形で見え方が変わります。',
+    concerns: ['小鼻の広がりが気になる', '鼻が大きく見える', '笑うと小鼻が広がる'],
+    makeup: { img: 'nose_wide', steps: ['小鼻のキワに縦長のシャドウを入れて、幅を内側へ', '鼻筋のハイライトは“細く・まっすぐ”一本だけ', '小鼻の赤みはコンシーラーで消し、ツヤを抑える'] },
+    tx: [['kobana', '小鼻の広がりを内側に寄せる'], ['bisen', '鼻先を細く整え、小鼻とのバランスを良く見せる']],
+  },
+  nose_long: {
+    look: '鼻がすっと長く、大人っぽく上品な印象。一方で、顔が間延びして見えやすい部分です。',
+    cause: '鼻先の向き（下がり）や、鼻柱の位置で長さの見え方が変わります。',
+    concerns: ['鼻が長く見える', '鼻先が下がって見える', '大人っぽく見られすぎる'],
+    makeup: { img: 'nose_long', steps: ['鼻先の下（鼻柱）に影を入れて、先端を短く', 'ハイライトは鼻の中間で止め、鼻先まで伸ばさない', 'ノーズシャドウは眉頭からつなげず、目頭横から'] },
+    tx: [['bisen', '鼻先の形と向きを整え、下がって見えるのを抑える']],
+  },
+  nose_short: {
+    look: '鼻がコンパクトで、幼く可愛らしい印象。一方で、中顔面が詰まって見えやすい部分です。',
+    cause: '鼻先の向き（上向き）や、鼻筋の高さで長さの見え方が変わります。',
+    concerns: ['鼻が短く見える', '鼻先が上を向いて見える', '幼く見られる'],
+    makeup: { img: 'nose_short', steps: ['ハイライトを眉間〜鼻先まで長く通す', 'ノーズシャドウは眉頭からつなげて、縦ラインを強調', '鼻先に点ハイライトを入れ、先端を前へ出す'] },
+    tx: [['bichu', '鼻先・鼻柱を下に伸ばし、鼻の長さを出す'], ['hanasuji', '鼻筋を通して、縦のラインを長く見せる']],
+  },
+  nla_acute: {
+    look: '鼻先が下向きで、大人っぽく落ち着いた印象。一方で、横顔で鼻先が下がって見えやすい部分です。',
+    cause: '鼻先の軟骨の形や、鼻柱の位置で角度が変わります。',
+    concerns: ['横顔で鼻先が下がって見える', '鼻が長く見える', '笑うと鼻先が下がる'],
+    makeup: { steps: ['鼻先の下に明るい色をのせ、鼻先を少し上向きに見せる', '鼻先の上側にはシャドウを入れない', 'ハイライトは鼻先の少し上で止める'] },
+    tx: [['bisen', '鼻先の形と向きを整え、角度を近づける']],
+  },
+  nla_obtuse: {
+    look: '鼻先が上向きで、幼く可愛らしい印象。一方で、正面から鼻の穴が見えやすい部分です。',
+    cause: '鼻先の軟骨の形や、鼻柱の位置で角度が変わります。',
+    concerns: ['正面から鼻の穴が見える', '鼻先が上を向いて見える', '横顔が気になる'],
+    makeup: { steps: ['鼻先の下（鼻柱）に影を入れ、鼻先を少し下向きに見せる', '鼻先のハイライトは控えめにする', '鼻の穴のふちに、ごく薄くシャドウを入れる'] },
+    tx: [['bichu', '鼻先・鼻柱を下に伸ばし、角度を近づける']],
+  },
+  eline_out: {
+    look: '口元にボリュームがあり、華やかな印象。一方で、横顔で口元が出て見えやすい部分です。',
+    cause: 'あご先の高さ、鼻先の高さ、歯並びや口元の骨格のどれが原因かで、整え方が変わります。',
+    concerns: ['横顔で口元が出て見える', 'あごが小さい・引っ込んで見える', '口元のもっこり感が気になる'],
+    makeup: { steps: ['リップは輪郭の内側に、マットな質感で塗る', 'あご先にハイライトを入れて、前に出して見せる', '鼻先にも点ハイライトを入れ、横顔のラインを整える'] },
+    tx: [['eline', '糸であご先を前に出し、Eラインを整える'], ['hyal', 'あご先に高さを出す']],
+  },
+  mouth_wide: {
+    look: '口元が華やかで、明るく表情豊かな印象。一方で、口元が主役になりやすい部分です。',
+    cause: '口の横幅は骨格や歯並びの影響が大きく、メイクで調整しやすい部分です。',
+    concerns: ['口が大きく見える', '笑うと口元が目立つ', 'リップがはみ出しやすい'],
+    makeup: { img: 'mouth_wide', steps: ['口角をコンシーラーで1〜2mm消す', 'リップは輪郭の内側から塗り、口角まで塗り込まない', '濃い色・強いツヤより、肌なじみの中間色を'] },
+    tx: [],
+  },
+  mouth_small: {
+    look: '口元がコンパクトで、上品で可愛らしい印象。一方で、顔の余白が目立ちやすい部分です。',
+    cause: '口の横幅は骨格の影響が大きく、メイクで調整しやすい部分です。',
+    concerns: ['口が小さく見える', '口元がさみしい', '顔の余白が目立つ'],
+    makeup: { img: 'mouth_small', steps: ['口角を外側へ2mmほどライナーで描き足す', '口角の上に小さなハイライトを入れ、横に引き上げる', '下唇に横長のツヤを入れて、幅を強調'] },
+    tx: [],
+  },
+  upper_thin: {
+    look: '上唇がすっきりして、上品で知的な印象。一方で、口元がさみしく見えやすい部分です。',
+    cause: '唇のボリュームや、上唇の山の形で見え方が変わります。',
+    concerns: ['上唇が薄い', '口元がさみしく見える', '鼻の下が長く見える'],
+    makeup: { img: 'upper_thin', steps: ['リップライナーで、上唇の輪郭を約1mmオーバーに描く', '下唇の中央にグロスで厚みと立体感', '上唇の山の上に細いハイライトを入れ、輪郭をくっきり'] },
+    tx: [['hyal', '唇にボリュームを足し、上下の比率を整える']],
+  },
+  lower_thin: {
+    look: '下唇がすっきりして、クールな印象。一方で、口元がさみしく見えやすい部分です。',
+    cause: '唇のボリュームで見え方が変わります。',
+    concerns: ['下唇が薄い', '唇のボリュームが欲しい', '口元がさみしく見える'],
+    makeup: { steps: ['下唇の輪郭を約1mmオーバーに描く', '下唇の中央に明るい色やツヤを足す', '上唇は輪郭どおりに塗り、上下に差をつける'] },
+    tx: [['hyal', '下唇にボリュームを足し、上下の比率を整える']],
+  },
+  corner_down: {
+    look: '口角がまっすぐ〜下がり気味で、落ち着いた大人っぽい印象。一方で、不機嫌そう・疲れて見えやすい部分です。',
+    cause: '口角を下げる筋肉の働きや、口元まわりのたるみで見え方が変わります。',
+    concerns: ['不機嫌そうに見られる', '口角が下がって見える', '写真で笑顔がつくりにくい'],
+    makeup: { steps: ['口角の下にコンシーラーを入れて、影を消す', 'リップライナーで口角を少し上向きに描く', '上唇の口角側にハイライトを入れる'] },
+    tx: [['botox_kouk', '口角を下げる筋肉をゆるめ、口角を上がりやすくする']],
+  },
+};
+
+// 美容医療の選択肢。名前・料金は公式HPの料金表（2026-10-16取得、税込の定価）、
+// 施術時間・ダウンタイム・リスクは公式HPの各施術ページ（2026-10-28取得）の要約。空欄はHPに記載がないもの
+const TX = {
+  kuma: { name: 'バレない黄金比クマ取り', price: '1部位 162,800円〜', time: '15〜30分程度', dt: '腫れは1〜3週間で落ち着く。内出血が出た場合は1〜2週間で消える（メイクで隠せる程度）', risk: '腫れ、内出血、傷跡（まぶたの裏側から行うため外からは見えない）' },
+  hyal: { name: 'ヒアルロン酸注射', price: '1cc 52,800円〜＋施術料 22,000円', time: '5〜10分程度', dt: '腫れはほとんどなく、針の跡の赤みが2〜3日', risk: '疼痛、腫れ、内出血、血管閉塞、アレルギー、感染、硬結' },
+  regen: { name: '再生注射', price: '1cc 52,800円〜＋施術料 22,000円', time: '30〜60分程度', dt: '腫れ・痛み・内出血が2日程度。3〜5回で1クールを推奨', risk: '腫れ、内出血、当日のむくみ感、注射の痛み' },
+  megashira: { name: '黄金比目頭切開', price: '217,800円〜（ベーシック＝2mm未満／ロング＝2mm以上）', time: '30分程度', dt: '治療期間は2週間〜1か月。約1週間後に抜糸', risk: '腫れ、内出血、傷跡や赤み、盛り上がりや糸の跡が残る可能性' },
+  mejiri: { name: '黄金比目尻切開・タレ目形成', price: '110,000円〜', time: '40〜60分程度', dt: '最初の3日ほど痛み・腫れ・熱感。赤みは2〜3か月で白く細い線に。約1週間後に抜糸', risk: '痛み、腫れ、熱感。目尻は後戻りしやすい' },
+  futae: { name: 'バレない黄金比二重術（埋没）', price: '両目 107,800円〜', time: '15分程度', dt: '腫れは数日〜1週間程度で軽快。内出血はまれ', risk: '左右差、角膜損傷（まれ）、内出血。糸がゆるむと元に戻ることがある' },
+  futae_sekkai: { name: '黄金比二重切開法', price: '217,800円〜', time: '30〜60分程度', dt: '1か月で9割程度落ち着き、3か月〜1年で完成。5〜7日後に抜糸', risk: '傷痕の盛り上がり・凹み・色素沈着、知覚の鈍さ・しびれなど。元に戻すことが難しい' },
+  mayushita: { name: '眉下切開', price: '217,800円〜', time: '40〜60分程度', dt: '最初の3日ほど痛み・腫れ・熱感。赤みは2〜3か月で白く細い線に。約1週間後に抜糸', risk: '痛み、腫れ、熱感、傷の赤み' },
+  mabuta_shibou: { name: 'まぶたの脂肪取り', price: '85,800円〜', time: '15〜20分程度', dt: '最初の数日は赤み（メイクで隠せる程度）。傷は1〜2週間でほとんど目立たなくなる', risk: '' },
+  kobana: { name: '黄金比小鼻縮小', price: '217,800円〜', time: '10分程度', dt: '腫れ・内出血は1週間程度。傷跡は1か月程度で目立たなくなる。5〜7日後に抜糸', risk: '腫れ、内出血、傷跡（外側法は内側法より目立ちやすい）' },
+  bisen: { name: '黄金比鼻尖形成', price: '217,800円〜', time: '10分程度', dt: '強い腫れは約1週間。3日〜1週間ごろに抜糸とギプス除去', risk: '腫れ、内出血、感染による炎症' },
+  bichu: { name: '黄金比鼻先移植術／鼻柱下降術', price: '165,000円〜', time: '60〜120分程度', dt: '', risk: 'だるさ、熱感、むくみ、鼻筋の違和感・異物感・鼻づまり感、仕上がりがイメージと異なる、鼻筋が曲がったと感じる など' },
+  hanasuji: { name: '黄金比鼻筋形成術', price: '1本 63,800円〜', time: '60分程度', dt: '腫れ・内出血（期間の記載なし）', risk: '腫れ、内出血。糸は約2年かけて溶け、効果は永久的ではない' },
+  eline: { name: 'バレない黄金比Eライン形成', price: '217,800円〜', time: '10分程度', dt: '2〜3日むくむ程度。赤みが1週間程度、まれに内出血（1〜2週間）', risk: 'むくみ、赤み、内出血。施術後はあごに強い圧力や衝撃を避ける' },
+  shibou: { name: 'バレない黄金比脂肪吸引', price: '217,800円〜', time: '30〜60分程度', dt: '腫れは2週間〜1か月、強めの内出血は2〜3週間。部位により3日〜1週間の圧迫固定。5〜7日後に抜糸', risk: '腫れ、内出血、吸引した部分が硬く感じる（1〜2か月で軽快）' },
+  buccal: { name: '脂肪除去（バッカル／メーラー／ジョール）', price: '217,800円〜', time: '30分程度', dt: '', risk: '局所麻酔によるアレルギー、感染、血腫' },
+  botox_era: { name: 'ボトックス注射（エラ）', price: '41,800円〜＋施術料 22,000円', time: '5〜15分程度', dt: '効果は一般的に3〜6か月程度（1か月ほどでピーク）', risk: '疼痛、腫れ、内出血、アレルギー、表情の違和感。妊娠・出産・授乳中は受けられない' },
+  botox_kouk: { name: 'ボトックス注射（口角）', price: '27,280円〜＋施術料 22,000円', time: '5〜15分程度', dt: '効果は一般的に3〜6か月程度（1か月ほどでピーク）', risk: '疼痛、腫れ、内出血、アレルギー、表情の違和感。妊娠・出産・授乳中は受けられない' },
+  ito: { name: 'バレない黄金比小顔リフト（糸）', price: '1本 44,000円〜', time: '30〜60分程度', dt: '腫れ・むくみが2〜3日、内出血は2週間程度、突っ張り感は1〜2週間', risk: '腫れ、突っ張り感、針穴程度の傷。効果は永久的ではない' },
+};
+
+function grade(dev, g, s) {
+  const a = Math.abs(dev);
+  return a <= g ? 'good' : a <= s ? 'slight' : 'off';
+}
+const f2 = (n) => n.toFixed(2);
+
+// 平均的な顔の値（仮）。強み・整えるポイント・印象は「黄金比からのズレ」ではなく
+// 「平均的な人と比べてどれだけ目立つか」で選ぶ。実際の写真10〜20枚で調整する前提。
+//   B: 平均的な値  S: ばらつきの目安  side: どちら側にズレると「整えるポイント」か（both / low / high）
+const BASE = {
+  1: { I: 0, B: 0.05, S: 0.04, side: 'high' },      // 三分割の最大のズレ
+  2: { I: 2, B: 2.05, S: 0.2, side: 'both' },       // 口〜あご ÷ 鼻下〜口
+  3: { I: 1, B: 0.95, S: 0.07, side: 'low' },       // 目幅×5 ÷ 顔幅
+  4: { I: 1.46, B: 1.33, S: 0.06, side: 'both' },   // 縦 ÷ 横
+  5: { I: 1 / 3, B: 0.33, S: 0.04, side: 'low' },   // 目の縦 ÷ 横
+  6: { I: 1, B: 1.2, S: 0.1, side: 'both' },        // 目頭間 ÷ 目幅
+  7: { I: 0, B: 0, S: 0.12, side: 'both' },         // 眉頭のずれ ÷ 目幅
+  8: { I: 1, B: 1.1, S: 0.1, side: 'high' },        // 小鼻幅 ÷ 目頭間
+  9: { I: 1, B: 1, S: 0.05, side: 'both' },         // 鼻の長さ ÷ 顔の縦の1/3
+  12: { I: 1, B: 0.97, S: 0.08, side: 'both' },     // 口の横幅 ÷ 黒目の内側どうし
+  13: { I: 1.5, B: 1.45, S: 0.25, side: 'both' },   // 下唇 ÷ 上唇
+  14: { I: 0.01, B: 0, S: 0.02, side: 'low' },      // 口角の上がり ÷ 口の横幅
+};
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+function evaluate(m) {
+  const items = [];
+  // v: 比較に使う値（BASEがある項目のみ）、imp: 印象への寄与（+で大人っぽい）
+  const add = (it) => items.push(Object.assign({ status: 'skip', value: '—', finding: '', tip: null, v: null, imp: 0 }, it));
+
+  // 1 縦の三分割
+  if (m.thirds) {
+    const mean = avg(...m.thirds);
+    const devs = m.thirds.map((t) => t / mean - 1);
+    let k = 0;
+    devs.forEach((d, i) => { if (Math.abs(d) > Math.abs(devs[k])) k = i; });
+    const st = grade(devs[k], 0.06, 0.12);
+    const part = ['おでこ（上顔面）', '中顔面', '下顔面'][k];
+    const longer = devs[k] > 0;
+    add({ id: 1, cat: 'v', name: '縦の三分割', ideal: '1 : 1 : 1', status: st,
+      value: m.thirds.map((t) => f2(t / mean)).join(' : '),
+      finding: st === 'good' ? '' : `${part}が${longer ? '長め' : '短め'}`,
+      tip: st === 'good' ? null : [['forehead_long', 'forehead_short'], ['mid_long', 'mid_short'], ['lower_long', 'lower_short']][k][longer ? 0 : 1],
+      v: Math.abs(devs[k]), imp: clamp(devs[1] / 0.05, -1.5, 1.5) });
+  } else add({ id: 1, cat: 'v', name: '縦の三分割', ideal: '1 : 1 : 1' });
+
+  // 2 下顔面のバランス
+  if (m.noseToStom && m.stomToChin) {
+    const r = m.stomToChin / m.noseToStom;
+    const dev = r / 2 - 1;
+    const st = grade(dev, 0.08, 0.16);
+    add({ id: 2, cat: 'v', name: '下顔面のバランス', ideal: '1 : 2', status: st, value: `1 : ${f2(r)}`,
+      finding: st === 'good' ? '' : (dev > 0 ? '口〜あごが長め' : '口〜あごが短め（鼻の下が長め）'),
+      tip: st === 'good' ? null : (dev > 0 ? 'lower_long' : 'lower_short'),
+      v: r, imp: clamp((r - BASE[2].B) / BASE[2].S, -1.5, 1.5) });
+  } else add({ id: 2, cat: 'v', name: '下顔面のバランス', ideal: '1 : 2' });
+
+  // 3 横の五分割（目幅×5＝顔幅）
+  if (m.eyeW && m.faceWidthEye) {
+    const r = m.faceWidthEye / m.eyeW;
+    const dev = 5 / r - 1;
+    let st = grade(dev, 0.08, 0.16);
+    if (dev > 0 && st !== 'good') st = 'slight';
+    const val = m.fifths ? m.fifths.map((s) => (s / m.eyeW).toFixed(1)).join(' : ') : `顔幅＝目幅×${r.toFixed(1)}`;
+    add({ id: 3, cat: 'h', name: '横の五分割', ideal: '目幅×5＝顔幅', status: st, value: val,
+      finding: st === 'good' ? '' : (dev < 0 ? '目の横幅が顔幅の1/5より小さめ' : '目の横幅が大きめ'),
+      tip: st === 'good' || dev > 0 ? null : 'eye_small', v: 5 / r });
+  } else add({ id: 3, cat: 'h', name: '横の五分割', ideal: '目幅×5＝顔幅' });
+
+  // 4 顔の縦横比
+  if (m.faceLen && m.faceWidthMax) {
+    const r = m.faceLen / m.faceWidthMax;
+    const dev = r / 1.46 - 1;
+    const st = grade(dev, 0.05, 0.1);
+    add({ id: 4, cat: 'h', name: '顔の縦横比', ideal: '横1 : 縦1.46', status: st, value: `横1 : 縦${f2(r)}`,
+      finding: st === 'good' ? '' : (dev < 0 ? '横幅が広め（丸み）' : '縦が長め（面長）'),
+      tip: st === 'good' ? null : (dev < 0 ? 'wide_face' : 'long_face'),
+      v: r, imp: clamp((r - BASE[4].B) / BASE[4].S, -1.5, 1.5) });
+  } else add({ id: 4, cat: 'h', name: '顔の縦横比', ideal: '横1 : 縦1.46' });
+
+  // 5 目の縦横比
+  if (m.eyeH && m.eyeW) {
+    const r = m.eyeH / m.eyeW;
+    const st = r < 0.25 ? 'off' : r < 0.29 ? 'slight' : 'good';
+    add({ id: 5, cat: 'e', name: '目の縦横比', ideal: '縦1 : 横3', status: st, value: `縦1 : 横${(1 / r).toFixed(1)}`,
+      finding: st === 'good' ? '' : '目の縦幅が細め', tip: st === 'good' ? null : 'eye_narrow', v: r });
+  } else add({ id: 5, cat: 'e', name: '目の縦横比', ideal: '縦1 : 横3' });
+
+  // 6 目と目の間隔（日本人は目頭間が目幅より広めの人が多いので、許容幅を広めにとる。要調整）
+  if (m.innerGap && m.eyeW) {
+    const r = m.innerGap / m.eyeW;
+    const dev = r - 1;
+    const st = grade(dev, 0.12, 0.25);
+    add({ id: 6, cat: 'e', name: '目と目の間隔', ideal: '目頭間＝目幅', status: st, value: `目幅×${f2(r)}`,
+      finding: st === 'good' ? '' : (dev > 0 ? '目と目の間が広め（離れ目寄り）' : '目と目の間が狭め（寄り目寄り）'),
+      tip: st === 'good' ? null : (dev > 0 ? 'eye_wide_set' : 'eye_close_set'),
+      v: r, imp: -clamp((r - BASE[6].B) / BASE[6].S, -1.5, 1.5) });
+  } else add({ id: 6, cat: 'e', name: '目と目の間隔', ideal: '目頭間＝目幅' });
+
+  // 7 眉の位置
+  if (m.browOffset != null) {
+    const o = m.browOffset;
+    const st = grade(o, 0.12, 0.25);
+    add({ id: 7, cat: 'e', name: '眉の位置', ideal: '眉頭＝目頭の上', status: st,
+      value: st === 'good' ? 'ほぼ目頭の真上' : `目頭より${o > 0 ? '内側' : '外側'}`,
+      finding: st === 'good' ? '' : (o > 0 ? '眉頭が内側寄り' : '眉頭が外側寄り'),
+      tip: st === 'good' ? null : (o > 0 ? 'brow_inner' : 'brow_outer'), v: o });
+  } else if (m.browChoice) {
+    const c = m.browChoice;
+    add({ id: 7, cat: 'e', name: '眉の位置', ideal: '眉頭＝目頭の上', status: c === 'above' ? 'good' : 'slight',
+      value: { above: '目頭の真上', inner: '目頭より内側', outer: '目頭より外側' }[c],
+      finding: c === 'above' ? '' : (c === 'inner' ? '眉頭が内側寄り' : '眉頭が外側寄り'),
+      tip: c === 'above' ? null : (c === 'inner' ? 'brow_inner' : 'brow_outer') });
+  } else add({ id: 7, cat: 'e', name: '眉の位置', ideal: '眉頭＝目頭の上' });
+
+  // 8 小鼻の幅
+  if (m.alarW && m.innerGap) {
+    const r = m.alarW / m.innerGap;
+    const dev = r - 1;
+    const st = dev > 0 ? grade(dev, 0.08, 0.16) : grade(dev, 0.2, 0.3);
+    add({ id: 8, cat: 'n', name: '小鼻の幅', ideal: '小鼻幅＝目頭間', status: st, value: `目頭間×${f2(r)}`,
+      finding: st === 'good' ? '' : (dev > 0 ? '小鼻が広め' : '小鼻が小さめ'),
+      tip: st === 'good' || dev < 0 ? null : 'nose_wide', v: r });
+  } else add({ id: 8, cat: 'n', name: '小鼻の幅', ideal: '小鼻幅＝目頭間' });
+
+  // 9 鼻の長さ
+  if (m.noseLen && m.faceLen) {
+    const r = m.noseLen / m.faceLen;
+    const dev = r * 3 - 1;
+    const st = grade(dev, 0.06, 0.12);
+    add({ id: 9, cat: 'n', name: '鼻の長さ', ideal: '顔の縦の1/3', status: st, value: `顔の縦の${f2(r)}`,
+      finding: st === 'good' ? '' : (dev > 0 ? '鼻が長め' : '鼻が短め'),
+      tip: st === 'good' ? null : (dev > 0 ? 'nose_long' : 'nose_short'),
+      v: r * 3, imp: clamp((r * 3 - BASE[9].B) / BASE[9].S, -1.5, 1.5) });
+  } else add({ id: 9, cat: 'n', name: '鼻の長さ', ideal: '顔の縦の1/3' });
+
+  // 10 鼻と唇の角度（横顔・自己回答）
+  const nla = m.side && m.side.nla;
+  if (nla) {
+    const st = nla === 'ok' ? 'good' : nla === 'acute' ? 'off' : 'slight';
+    add({ id: 10, cat: 'n', name: '鼻と唇の角度', ideal: '90〜110°', status: st,
+      value: { ok: '90〜110°', acute: '90°より狭い', obtuse: '110°より開く' }[nla],
+      finding: st === 'good' ? '' : (nla === 'acute' ? '鼻先が下向き寄り' : '鼻先が上向き寄り'),
+      tip: st === 'good' ? null : (nla === 'acute' ? 'nla_acute' : 'nla_obtuse') });
+  } else add({ id: 10, cat: 'n', name: '鼻と唇の角度', ideal: '90〜110°', value: '横顔は未回答' });
+
+  // 11 Eライン（横顔・自己回答）
+  const el = m.side && m.side.eline;
+  if (el) {
+    const st = el === 'outside' ? 'off' : 'good';
+    add({ id: 11, cat: 'n', name: 'Eライン（横顔）', ideal: '唇が線上〜内側', status: st,
+      value: { inside: '線の内側', on: '線に触れる', outside: '線より外' }[el],
+      finding: st === 'good' ? '' : '口元が前に出て見えやすい', tip: st === 'good' ? null : 'eline_out' });
+  } else add({ id: 11, cat: 'n', name: 'Eライン（横顔）', ideal: '唇が線上〜内側', value: '横顔は未回答' });
+
+  // 12 口の横幅
+  if (m.mouthW && m.irisInnerGap) {
+    const r = m.mouthW / m.irisInnerGap;
+    const dev = r - 1;
+    const st = grade(dev, 0.08, 0.16);
+    add({ id: 12, cat: 'm', name: '口の横幅', ideal: '口角＝黒目の内側', status: st, value: `黒目の内側どうし×${f2(r)}`,
+      finding: st === 'good' ? '' : (dev > 0 ? '口が大きめ（口角が黒目の内側より外）' : '口が小さめ'),
+      tip: st === 'good' ? null : (dev > 0 ? 'mouth_wide' : 'mouth_small'), v: r });
+  } else add({ id: 12, cat: 'm', name: '口の横幅', ideal: '口角＝黒目の内側' });
+
+  // 13 上唇と下唇
+  if (m.upperLip && m.lowerLip) {
+    const r = m.lowerLip / m.upperLip;
+    const dev = r / 1.5 - 1;
+    const st = grade(dev, 0.15, 0.3);
+    add({ id: 13, cat: 'm', name: '上唇と下唇', ideal: '1 : 1.5', status: st, value: `1 : ${f2(r)}`,
+      finding: st === 'good' ? '' : (dev > 0 ? '上唇が薄め' : '下唇が薄め'),
+      tip: st === 'good' ? null : (dev > 0 ? 'upper_thin' : 'lower_thin'), v: r });
+  } else add({ id: 13, cat: 'm', name: '上唇と下唇', ideal: '1 : 1.5' });
+
+  // 14 口角の高さ
+  if (m.cornerLift != null) {
+    const l = m.cornerLift;
+    const st = l >= -0.005 ? 'good' : l >= -0.03 ? 'slight' : 'off';
+    add({ id: 14, cat: 'm', name: '口角の高さ', ideal: '口角が中央より上', status: st,
+      value: l >= -0.005 ? '中央より上〜同じ' : '中央より下',
+      finding: st === 'good' ? '' : '口角が下がり気味', tip: st === 'good' ? null : 'corner_down', v: l });
+  } else if (m.cornerChoice) {
+    const c = m.cornerChoice;
+    const st = c === 'up' ? 'good' : c === 'same' ? 'slight' : 'off';
+    add({ id: 14, cat: 'm', name: '口角の高さ', ideal: '口角が中央より上', status: st,
+      value: { up: '中央より上', same: 'ほぼ同じ', down: '中央より下' }[c],
+      finding: { up: '', same: '口角がまっすぐ（上がっていない）', down: '口角が下がり気味' }[c],
+      tip: st === 'good' ? null : 'corner_down' });
+  } else add({ id: 14, cat: 'm', name: '口角の高さ', ideal: '口角が中央より上' });
+
+  // 平均的な人と比べた目立ち具合（+ほど平均より「整えるポイント」側、−ほど平均より良い側）
+  const relOf = (c, v) => c.side === 'low' ? (c.B - v) / c.S : c.side === 'high' ? (v - c.B) / c.S : (Math.abs(v - c.I) - Math.abs(c.B - c.I)) / c.S;
+  items.forEach((it) => {
+    const c = BASE[it.id];
+    if (it.status === 'skip') it.rel = null;
+    else if (c && it.v != null) it.rel = relOf(c, it.v);
+    else it.rel = { good: -0.5, slight: 0.5, off: 1 }[it.status];  // 見て答える項目
+  });
+
+  // カテゴリごとの判定（いちばん悪いもの）
+  const rank = { skip: -1, good: 0, slight: 1, off: 2 };
+  const cats = CATS.map((c) => {
+    const st = items.filter((it) => it.cat === c.key && it.status !== 'skip')
+      .reduce((acc, it) => (rank[it.status] > rank[acc] ? it.status : acc), 'skip');
+    return Object.assign({}, c, { status: st });
+  });
+
+  // 目立つ順に並んだ list から2つ選ぶ。2つ目は別カテゴリを優先するが、目立ち具合の差が大きければ同じカテゴリでも採る
+  const pickTwo = (list) => {
+    if (list.length < 2) return list.slice();
+    const [first, ...rest] = list;
+    const other = rest.find((it) => it.cat !== first.cat);
+    return [first, other && Math.abs(other.rel - rest[0].rel) <= 1 ? other : rest[0]];
+  };
+  // 強み：黄金比に近い項目のうち、平均より黄金比に近いものから
+  const strengths = pickTwo(items.filter((it) => it.status === 'good').sort((a, b) => a.rel - b.rel));
+  // 整えるポイント：ズレている項目のうち、平均よりズレが大きいものから
+  const points = pickTwo(items.filter((it) => it.status !== 'good' && it.status !== 'skip' && it.tip).sort((a, b) => b.rel - a.rel));
+
+  const imp = items.reduce((s, it) => s + it.imp, 0);
+  return { items, cats, strengths, points, impression: clamp(Math.round(imp / 1.2), -3, 3) };
+}
+window.__evaluate = evaluate;
+
+// ---------- 結果の表示 ----------
+const IMPRESSION_LABEL = { '-3': '幼い・かわいらしい寄り', '-2': '幼い・かわいらしい寄り', '-1': 'やや幼い寄り', '0': 'バランス型', '1': 'やや大人っぽい寄り', '2': '大人っぽい・クール寄り', '3': '大人っぽい・クール寄り' };
+const STRENGTH_TEXT = {
+  1: '縦の三分割がほぼ1:1:1。顔全体がまとまって見えるバランスです',
+  2: '口〜あごのバランスが黄金比どおり。顔の下半分が整って見えます',
+  3: '目の大きさが顔幅にちょうどいいバランスです',
+  4: '縦横比が「理想の卵型」に近い輪郭です',
+  5: '目の縦横比が黄金比どおり。ぱっちりした印象につながります',
+  6: '目と目の間隔が黄金比どおりです',
+  7: '眉頭が目頭の真上。目元が自然に整って見えます',
+  8: '小鼻の幅が目頭の間隔とそろっています',
+  9: '鼻の長さが顔の縦の1/3に近いバランスです',
+  10: '鼻と唇の角度がきれいな範囲です',
+  11: '横顔のEラインがきれいな範囲です',
+  12: '口の横幅が黒目の内側にそろっています',
+  13: '上唇と下唇の厚みが1:1.5に近いバランスです',
+  14: '口角が上がっていて、明るい印象につながります',
+};
+const catOf = (it) => CATS.find((c) => c.key === it.cat);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// 黄金比との差をmmで（黒目の直径＝約11.7mmを基準にした写真からの推定）
+function diffMM(it, m) {
+  const k = m.pxPerMm;
+  if (!k) return '';
+  const mm = (px) => `約${(Math.abs(px) / k).toFixed(1)}mm`;
+  switch (it.id) {
+    case 1: {
+      const mean = avg(...m.thirds);
+      const d = m.thirds.map((t) => t - mean);
+      let i = 0;
+      d.forEach((v, j) => { if (Math.abs(v) > Math.abs(d[i])) i = j; });
+      return `${['おでこ（上顔面）', '中顔面', '下顔面'][i]}が、3等分より${mm(d[i])}${d[i] > 0 ? '長い' : '短い'}`;
+    }
+    case 2: { const d = m.stomToChin - (m.noseToStom + m.stomToChin) * 2 / 3; return `口〜あごが、黄金比より${mm(d)}${d > 0 ? '長い' : '短い'}`; }
+    case 3: { const d = m.eyeW - m.faceWidthEye / 5; return `目の横幅が、黄金比より${mm(d)}${d > 0 ? '大きい' : '小さい'}`; }
+    case 4: { const d = m.faceWidthMax - m.faceLen / 1.46; return `顔の横幅が、黄金比より${mm(d)}${d > 0 ? '広い' : '狭い'}`; }
+    case 5: { const d = m.eyeH - m.eyeW / 3; return `目の縦幅が、黄金比より${mm(d)}${d > 0 ? '広い' : '狭い'}`; }
+    case 6: { const d = m.innerGap - m.eyeW; return `目頭の間が、黄金比より${mm(d)}${d > 0 ? '広い' : '狭い'}`; }
+    case 7: { const d = m.browOffset * m.eyeW; return `眉頭が、目頭の真上より${mm(d)}${d > 0 ? '内側' : '外側'}`; }
+    case 8: { const d = m.alarW - m.innerGap; return `小鼻の幅が、黄金比より${mm(d)}${d > 0 ? '広い' : '狭い'}`; }
+    case 9: { const d = m.noseLen - m.faceLen / 3; return `鼻が、黄金比より${mm(d)}${d > 0 ? '長い' : '短い'}`; }
+    case 12: { const d = m.mouthW - m.irisInnerGap; return `口の横幅が、黄金比より${mm(d)}${d > 0 ? '大きい' : '小さい'}`; }
+    case 13: {
+      if (it.tip === 'lower_thin') { const d = m.lowerLip - m.upperLip * 1.5; return `下唇が、黄金比より${mm(d)}${d > 0 ? '厚い' : '薄い'}`; }
+      const d = m.upperLip - m.lowerLip / 1.5; return `上唇が、黄金比より${mm(d)}${d > 0 ? '厚い' : '薄い'}`;
+    }
+    case 14: { const d = m.cornerLift * m.mouthW; return `口角が、唇の中央より${mm(d)}${d >= 0 ? '上' : '下'}`; }
+    default: return '';
+  }
+}
+
+// 項目ごとに「あなたの線（now）」と「黄金比の線（ideal）」を写真に重ねる範囲と線
+function vizSpec(id, m) {
+  const L = m.lines, P = photo.P;
+  const fw = L.cR - L.cL, len = L.chin - L.hair, eyeY = L.eyeY;
+  const H = (y, x0 = -Infinity, x1 = Infinity) => [x0, y, x1, y];
+  const V = (x, y0 = -Infinity, y1 = Infinity) => [x, y0, x, y1];
+  const box = (x0, y0, x1, y1) => ({ x0: Math.max(0, x0), y0: Math.max(0, y0), x1: Math.min(photo.w, x1), y1: Math.min(photo.h, y1) });
+  const ring = (c, ids) => avg(...ids.map((i) => dist(P[i], P[c])));
+  switch (id) {
+    case 1: return { crop: box(L.cL - fw * 0.12, L.hair - len * 0.06, L.cR + fw * 0.12, L.chin + len * 0.04), now: [H(L.hair), H(L.brow), H(L.sub), H(L.chin)], ideal: [H(L.hair + len / 3), H(L.hair + len * 2 / 3)] };
+    case 2: { const t = L.chin - L.sub; return { crop: box(L.cL + fw * 0.1, L.sub - t * 0.35, L.cR - fw * 0.1, L.chin + t * 0.12), now: [H(L.sub), H(L.stom), H(L.chin)], ideal: [H(L.sub + t / 3)] }; }
+    case 3: return { crop: box(L.cL - fw * 0.04, eyeY - fw * 0.2, L.cR + fw * 0.04, eyeY + fw * 0.2), now: [L.cL, L.oL, L.iL, L.iR, L.oR, L.cR].map((x) => V(x)), ideal: [1, 2, 3, 4].map((k) => V(L.cL + (fw * k) / 5)) };
+    case 4: { const iw = len / 1.46, c = (L.cL + L.cR) / 2; return { crop: box(L.cL - fw * 0.15, L.hair - len * 0.05, L.cR + fw * 0.15, L.chin + len * 0.04), now: [V(L.cL), V(L.cR)], ideal: [V(c - iw / 2), V(c + iw / 2)] }; }
+    case 5: { const ew = L.iL - L.oL, c = (L.eyeTop + L.eyeBot) / 2; return { crop: box(L.oL - ew * 0.35, c - ew * 0.55, L.iL + ew * 0.35, c + ew * 0.55), now: [H(L.eyeTop), H(L.eyeBot)], ideal: [H(c - m.eyeW / 6), H(c + m.eyeW / 6)] }; }
+    case 6: { const c = (L.iL + L.iR) / 2; return { crop: box(L.oL - fw * 0.06, eyeY - fw * 0.16, L.oR + fw * 0.06, eyeY + fw * 0.16), now: [V(L.iL), V(L.iR)], ideal: [V(c - m.eyeW / 2), V(c + m.eyeW / 2)] }; }
+    case 7: {
+      const bx = [avg(P[55].x, P[107].x), avg(P[285].x, P[336].x)].sort((a, b) => a - b);
+      return { crop: box(L.oL - fw * 0.06, L.brow - len * 0.09, L.oR + fw * 0.06, eyeY + len * 0.06), now: bx.map((x) => V(x, L.brow - len * 0.06, L.brow + len * 0.02)), ideal: [V(L.iL), V(L.iR)] };
+    }
+    case 8: return { crop: box(L.iL - m.innerGap * 0.45, eyeY - len * 0.04, L.iR + m.innerGap * 0.45, L.sub + len * 0.06), now: [V(L.alarL, L.sub - len * 0.1, L.sub + len * 0.02), V(L.alarR, L.sub - len * 0.1, L.sub + len * 0.02)], ideal: [V(L.iL), V(L.iR)] };
+    case 9: return { crop: box(L.oL - fw * 0.04, L.brow - len * 0.08, L.oR + fw * 0.04, L.stom + len * 0.05), now: [H(L.brow), H(L.sub)], ideal: [H(L.brow + len / 3)] };
+    case 12: {
+      const rA = ring(468, [469, 470, 471, 472]), rB = ring(473, [474, 475, 476, 477]);
+      const [a, b] = P[468].x < P[473].x ? [P[468].x + rA, P[473].x - rB] : [P[473].x + rB, P[468].x - rA];
+      return { crop: box(L.oL - fw * 0.04, eyeY - len * 0.05, L.oR + fw * 0.04, L.lipBot + len * 0.05), now: [V(L.mouthL, L.stom - len * 0.05, L.stom + len * 0.05), V(L.mouthR, L.stom - len * 0.05, L.stom + len * 0.05)], ideal: [V(a), V(b)] };
+    }
+    case 13: { const T = L.lipBot - L.lipTop, mw = L.mouthR - L.mouthL; return { crop: box(L.mouthL - mw * 0.25, L.lipTop - T * 0.6, L.mouthR + mw * 0.25, L.lipBot + T * 0.5), now: [H(L.lipTop), H(L.stom), H(L.lipBot)], ideal: [H(L.lipTop + T / 2.5)] }; }
+    case 14: {
+      const T = L.lipBot - L.lipTop, mw = L.mouthR - L.mouthL, cy = avg(P[61].y, P[291].y);
+      return { crop: box(L.mouthL - mw * 0.25, L.lipTop - T * 0.6, L.mouthR + mw * 0.25, L.lipBot + T * 0.5), now: [H(cy, L.mouthL - mw * 0.1, L.mouthL + mw * 0.12), H(cy, L.mouthR - mw * 0.12, L.mouthR + mw * 0.1)], ideal: [H(L.stom)] };
+    }
+    default: return null;
+  }
+}
+
+function drawViz(canvas, it, m) {
+  const spec = vizSpec(it.id, m);
+  if (!spec) return false;
+  const g = setupCanvas(canvas, spec.crop);
+  const { ctx } = g, cr = spec.crop;
+  const line = ([x0, y0, x1, y1], color, dashed) => {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.4 * g.u;
+    ctx.setLineDash(dashed ? [6 * g.u, 4 * g.u] : []);
+    ctx.shadowColor = 'rgba(255,255,255,.95)';
+    ctx.shadowBlur = 3 * g.u;
+    ctx.beginPath();
+    ctx.moveTo(g.X(Math.max(cr.x0, x0)), g.Y(Math.max(cr.y0, y0)));
+    ctx.lineTo(g.X(Math.min(cr.x1, x1)), g.Y(Math.min(cr.y1, y1)));
+    ctx.stroke();
+    ctx.restore();
+  };
+  spec.ideal.forEach((s) => line(s, '#1fb58f', true));
+  spec.now.forEach((s) => line(s, '#ff4f97', false));
+  return true;
+}
+
+// 1項目ぶんの解説カード（現状 → 黄金比 → 近づける方法 → 相談）
+function deepCard(it, m, mode, idx, open) {
+  const p = PATTERNS[it.tip];
+  const c = catOf(it);
+  const diff = mode === 'auto' ? diffMM(it, m) : '';
+  const hasViz = mode === 'auto' && vizSpec(it.id, m);
+  const makeup = p.makeup;
+  const tx = p.tx.map(([key, how]) => {
+    const t = TX[key];
+    const rows = [['施術時間', t.time], ['ダウンタイム', t.dt], ['主なリスク', t.risk]].map(([k, v]) => `<dt>${k}</dt><dd>${v ? esc(v) : '公式HPに記載なし（確認中）'}</dd>`).join('');
+    return `<div class="tx"><div class="tx-name">${esc(t.name)}</div><p class="tx-how">${esc(how)}</p><div class="tx-price">${esc(t.price)}（税込）</div>
+      <details class="tx-more"><summary>施術時間・ダウンタイム・リスク</summary><dl>${rows}</dl></details></div>`;
+  }).join('');
+  return `
+  <details class="card deep" data-tip="${it.tip}" ${open ? 'open' : ''}>
+    <summary class="deep-head">
+      <span class="cat-dot" style="background:${c.color}">${c.name}</span>
+      <span class="deep-title"><span class="kicker">${idx ? `ポイント${idx}｜` : ''}${esc(it.name)}</span><span class="find">${esc(it.finding)}</span></span>
+      <span class="chev" aria-hidden="true">⌄</span>
+    </summary>
+    ${hasViz ? `<canvas class="viz" data-id="${it.id}" aria-label="${esc(it.name)}のあなたの線と黄金比の線"></canvas>
+    <div class="legend"><span><i></i>あなた</span><span class="ideal"><i></i>黄金比</span></div>` : ''}
+    <div class="compare"><div class="you"><small>あなた</small><b>${esc(it.value)}</b></div><span aria-hidden="true">→</span><div class="gold"><small>黄金比</small><b>${esc(it.ideal)}</b></div></div>
+    ${diff ? `<p class="diff">${esc(diff)}<small>黒目の直径（約11.7mm）を基準にした、写真からの推定です</small></p>` : ''}
+    <div class="block"><h5>こう見えやすい</h5><p>${esc(p.look)}</p></div>
+    <div class="block"><h5>原因の例</h5><p>${esc(p.cause)}</p></div>
+    <div class="block"><h5>こんなお悩みはありませんか？</h5>
+      <div class="concern-list">${p.concerns.map((t) => `<label><input type="checkbox" data-tip="${it.tip}" value="${esc(t)}"><span>${esc(t)}</span></label>`).join('')}</div></div>
+    <div class="block"><h5><span class="m-num">1</span>メイクで近づける</h5>
+      ${makeup.img ? `<img class="makeup-img" src="makeup/${makeup.img}.jpg" alt="${esc(it.finding)}のメイク図解" loading="lazy">` : ''}
+      <ol class="steps-list">${makeup.steps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol></div>
+    ${tx ? `<div class="block"><h5><span class="m-num">2</span>美容医療で近づける（選択肢）</h5>${tx}
+      <p class="tx-note">どの方法が合うかは、骨格・脂肪・皮膚の状態を医師が診察して判断します。ここに挙げたのは一般的な選択肢で、効果やダウンタイムには個人差があります。表示価格は自由診療の定価（税込）です。</p></div>`
+      : `<div class="block"><p class="tx-note">この部分は、メイクやヘアで印象を調整しやすいところです。骨格からくる差が気になる場合は、診察で原因を確認できます。</p></div>`}
+    <a class="btn btn-consult" data-consult="${it.tip}" href="#">医師に無料カウンセリングで相談する</a>
+    <p class="consult-note">LINEが開き、この部分の結果が入力された状態になります</p>
+  </details>`;
+}
+
+const oaLink = (text) => `https://line.me/R/oaMessage/${LINE_ID}/?${encodeURIComponent(text)}`;
+
+function renderResult(r, m, mode) {
+  // 写真＋補助線（調整後の線）
+  const cv = $('#result-canvas');
+  if (mode === 'auto') {
+    cv.classList.remove('hidden');
+    const L = m.lines;
+    const fw = L.cR - L.cL, len = L.chin - L.hair;
+    const crop = { x0: Math.max(0, L.cL - fw * 0.22), x1: Math.min(photo.w, L.cR + fw * 0.22), y0: Math.max(0, L.hair - len * 0.1), y1: Math.min(photo.h, L.chin + len * 0.08) };
+    const g = setupCanvas(cv, crop);
+    const lav = 'rgba(125,92,200,.95)';
+    [L.hair, L.brow, L.sub, L.chin].forEach((y) => hLine(g, g.Y(y), lav, [7, 5]));
+    hLine(g, g.Y(L.stom), 'rgba(194,88,143,.6)', [3, 4], 1.5);
+    const mean = avg(...m.thirds);
+    const lx = g.W - 8;
+    label(g, `上 ${f2(m.thirds[0] / mean)}`, lx, g.Y((L.hair + L.brow) / 2), '#6b4f9e', 'right');
+    label(g, `中 ${f2(m.thirds[1] / mean)}`, lx, g.Y((L.brow + L.sub) / 2), '#6b4f9e', 'right');
+    label(g, `下 ${f2(m.thirds[2] / mean)}`, lx, g.Y((L.sub + L.chin) / 2), '#6b4f9e', 'right');
+    const ey = g.Y(L.eyeY), span = g.W * 0.07;
+    const xs = [L.cL, L.oL, L.iL, L.iR, L.oR, L.cR];
+    xs.forEach((x) => vLine(g, g.X(x), ey - span, ey + span, 'rgba(194,88,143,.9)', [4, 3]));
+    m.fifths.forEach((s, i) => label(g, (s / m.eyeW).toFixed(1), g.X((xs[i] + xs[i + 1]) / 2), ey + span + g.W * 0.025, '#c2588f', 'center'));
+    if (DEBUG) drawDebug(g);
+  } else {
+    cv.classList.add('hidden');
+  }
+
+  // 黄金比チェック（黄金比に近い項目の数）
+  const measured = r.items.filter((it) => it.status !== 'skip');
+  const goodN = measured.filter((it) => it.status === 'good').length;
+  $('#res-good').textContent = goodN;
+  $('#res-total').textContent = `/${measured.length}`;
+  $('#res-ring').style.setProperty('--p', measured.length ? Math.round((goodN / measured.length) * 100) : 0);
+  $('#res-bars').innerHTML = CATS.map((c) => {
+    const its = measured.filter((it) => it.cat === c.key);
+    const g = its.filter((it) => it.status === 'good').length;
+    return `<li><span style="color:${c.color}">${c.name}</span><i style="--w:${its.length ? (g / its.length) * 100 : 0}%"></i><em>${its.length ? `${g}/${its.length}` : '—'}</em></li>`;
+  }).join('');
+
+  // 総評
+  const impLabel = IMPRESSION_LABEL[String(r.impression)];
+  const top = r.points[0];
+  $('#summary-text').innerHTML = [
+    r.strengths.length ? `<b>${r.strengths.map((it) => `「${esc(it.name)}」`).join('と')}</b>が黄金比に近く、顔全体は<b>${impLabel}</b>のバランスです。` : `顔全体は<b>${impLabel}</b>のバランスです。`,
+    top ? `いちばん黄金比との差が大きいのは<b>「${esc(top.finding)}」</b>。${esc(PATTERNS[top.tip].look)}` : '大きなズレは見つかりませんでした。今のバランスを活かすメイクで十分です。',
+  ].join('');
+
+  // 印象
+  $('#scale-mark').style.left = `${((r.impression + 3) / 6) * 100}%`;
+  $('#scale-label').textContent = impLabel;
+
+  // 強み
+  $('#strengths').innerHTML = r.strengths.length
+    ? r.strengths.map((it) => `
+      <div class="card point strength"><div class="kicker">${catOf(it).name}｜${esc(it.name)}</div>
+      <div class="find">${STRENGTH_TEXT[it.id]}</div>
+      ${mode === 'auto' && vizSpec(it.id, m) ? `<canvas class="viz small" data-id="${it.id}" aria-label="${esc(it.name)}のあなたの線と黄金比の線"></canvas>` : ''}
+      <p class="note" style="margin:0">黄金比に近いパーツは、隠さずメイクの主役にすると魅力が引き立ちます。</p></div>`).join('')
+    : '<p class="note">計測できた項目が少ないため、強みを選べませんでした。</p>';
+
+  // 整えるポイント（上位2つは開いた状態、それ以外は「ほかの整えるポイント」に畳む）
+  const others = r.items.filter((it) => it.status !== 'good' && it.status !== 'skip' && it.tip && PATTERNS[it.tip] && !r.points.includes(it));
+  $('#points').innerHTML = r.points.length
+    ? r.points.map((it, i) => deepCard(it, m, mode, i + 1, true)).join('')
+    : '<div class="card point strength"><div class="find">大きなズレは見つかりませんでした</div><p class="note" style="margin:0">今のバランスを活かすメイクで十分です。</p></div>';
+  $('#more-title').classList.toggle('hidden', !others.length);
+  $('#more-points').innerHTML = others.map((it) => deepCard(it, m, mode, 0, false)).join('');
+
+  // 写真に線を重ねた図
+  if (mode === 'auto') {
+    document.querySelectorAll('#s-result canvas.viz').forEach((c) => {
+      const it = r.items.find((x) => x.id === Number(c.dataset.id));
+      drawViz(c, it, m);
+    });
+  }
+
+  // 一覧
+  $('#items-body').innerHTML = r.items.map((it) => `
+    <div class="irow"><div class="top"><span>${it.id}. ${it.name}</span><span class="pill st-${it.status}">${STATUS_TEXT[it.status]}</span></div>
+    <div class="sub">黄金比 ${it.ideal} ／ あなた ${it.value}</div></div>`).join('');
+
+  // LINEに送る文面（チェックしたお悩みも入れる）
+  const catTag = (it) => '#' + catOf(it).name;
+  const checked = (tip) => [...document.querySelectorAll(`#s-result .concern-list input:checked${tip ? `[data-tip="${tip}"]` : ''}`)].map((x) => x.value);
+  const updateLinks = () => {
+    const lines = ['【顔バランス分析の結果】'];
+    if (r.strengths.length) lines.push('強み：' + r.strengths.map((it) => it.name).join('／'));
+    lines.push('整えるポイント：' + (r.points.length ? r.points.map((it) => `${it.finding} ${catTag(it)}`).join('／') : 'なし'));
+    lines.push('印象：' + impLabel);
+    const all = checked();
+    if (all.length) lines.push('気になること：' + all.join('／'));
+    lines.push('20,000円OFFクーポンを受け取りたい');
+    $('#line-btn').href = oaLink(lines.join('\n'));
+    document.querySelectorAll('#s-result [data-consult]').forEach((a) => {
+      const it = r.items.find((x) => x.tip === a.dataset.consult);
+      const mine = checked(a.dataset.consult);
+      a.href = oaLink([`【無料カウンセリングで相談したい】${it.finding} ${catTag(it)}`, `あなた：${it.value}（黄金比：${it.ideal}）`, mine.length ? `気になること：${mine.join('／')}` : ''].filter(Boolean).join('\n'));
+    });
+    window.__lastResult = { result: r, measures: m, lineText: lines.join('\n') };
+  };
+  document.querySelectorAll('#s-result .concern-list input').forEach((x) => x.addEventListener('change', updateLinks));
+  updateLinks();
+
+  show('s-result');
+}
+
+// ---------- 写真の読み込み ----------
+$('#file').addEventListener('change', async (e) => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await loadImage(url);
+    await processImage(img);
+  } catch (err) {
+    console.error(err);
+    setStatus('');
+    setPhotoError('写真を読み込めませんでした。別の写真でお試しください。');
+  } finally {
+    URL.revokeObjectURL(url);
+    e.target.value = '';
+  }
+});
+
+// 動作確認用：?img=画像のURL で写真を自動で読み込む
+if (params.get('img')) {
+  show('s-photo');
+  loadImage(params.get('img')).then(processImage).catch((err) => { console.error(err); setPhotoError('テスト画像を読み込めませんでした。'); });
+}
+</script>
+</body>
+</html>
