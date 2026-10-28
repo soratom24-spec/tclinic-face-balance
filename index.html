@@ -426,7 +426,7 @@
   .steps li.done button { color: #2f7a62; cursor: pointer; }
   .steps li.done .num { background: linear-gradient(135deg, #a8ecd6, #7fd3b8); color: #fff; }
   #adjust-canvas, #result-canvas { width: auto; max-width: 100%; max-height: 62vh; margin: 0 auto; }
-  .line-picker { margin-top: 12px; padding: 12px 14px; }
+  .line-picker { margin-top: 22px; padding: 12px 14px; }
   .line-chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .line-chips button {
     padding: 6px 12px;
@@ -457,6 +457,51 @@
   }
   .nudge-btn:active { transform: scale(0.95); background: #fff; }
   .line-picker .btn-ghost { margin-top: 4px; padding: 6px; font-size: 13px; }
+  .auto-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin: 0 0 10px;
+    padding: 10px 12px;
+    border: 1px solid #fff;
+    border-radius: 16px;
+    background: rgba(205, 245, 232, 0.78);
+    -webkit-backdrop-filter: var(--blur);
+    backdrop-filter: var(--blur);
+  }
+  .an-icon { display: grid; place-items: center; flex: none; width: 22px; height: 22px; margin-top: 1px; border-radius: 50%; background: #2fbf8f; font-size: 13px; font-weight: 900; color: #fff; }
+  .auto-note p { margin: 0; font-size: 13px; line-height: 1.65; color: #2f5f50; }
+  .auto-note b { display: block; font-size: 14px; color: #1d7a5c; }
+  .canvas-wrap { position: relative; }
+  .tap-hint {
+    position: absolute;
+    left: 50%;
+    bottom: -12px;  /* 写真の下の縁にまたがせて、線に重ならないようにする */
+    margin: 0;
+    padding: 4px 12px;
+    transform: translateX(-50%);
+    border-radius: 999px;
+    background: rgba(255, 79, 151, 0.92);
+    box-shadow: 0 3px 10px rgba(255, 79, 151, 0.35);
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+    color: #fff;
+    pointer-events: none;
+  }
+  .tap-hint.pulse { animation: hint-pulse 0.6s ease 2; }
+  @keyframes hint-pulse { 50% { transform: translateX(-50%) scale(1.12); } }
+  .pick-guide { margin: 0 0 8px; font-size: 13px; line-height: 1.6; color: var(--sub); }
+  .line-chips button[data-changed="true"]::after {
+    content: "変更";
+    margin-left: 5px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: #fff3c4;
+    font-size: 10px;
+    font-weight: 700;
+    color: #9a6a12;
+  }
 
   /* 黄金比チェック（結果画面） */
   .ring b { font-family: "Shippori Mincho B1", "Hiragino Mincho ProN", "Yu Mincho", serif; }
@@ -726,15 +771,20 @@
     </ol>
     <h2 id="adjust-title" class="display"></h2>
     <p id="adjust-lead" class="lead"></p>
-    <canvas id="adjust-canvas" class="photo" aria-label="線の位置を合わせる写真"></canvas>
+    <div class="auto-note"><span class="an-icon" aria-hidden="true">✓</span><p><b>線は自動で引いてあります</b>合っていれば、そのまま下の「次へ」に進んでください。ずれている線があるときだけ、写真の上でその線をタップして直します。</p></div>
+    <div class="canvas-wrap">
+      <canvas id="adjust-canvas" class="photo" aria-label="線の位置を合わせる写真"></canvas>
+      <p id="tap-hint" class="tap-hint" aria-hidden="true"></p>
+    </div>
     <div class="card line-picker">
+      <p id="pick-guide" class="pick-guide" aria-live="polite"></p>
       <div id="line-chips" class="line-chips" aria-label="動かす線"></div>
-      <div class="nudge">
+      <div id="nudge" class="nudge hidden">
         <span id="line-name" class="line-name"></span>
         <button type="button" id="nudge-minus" class="nudge-btn"></button>
         <button type="button" id="nudge-plus" class="nudge-btn"></button>
       </div>
-      <button type="button" id="line-reset" class="btn btn-ghost">この線を自動の位置に戻す</button>
+      <button type="button" id="line-reset" class="btn btn-ghost hidden">この線を自動の位置に戻す</button>
     </div>
     <div id="yaw-warn" class="warn hidden"></div>
 
@@ -1090,7 +1140,7 @@ function prepareAligned(src, lm) {
     mouthL: Math.min(x(61), x(291)),
     mouthR: Math.max(x(61), x(291)),
   };
-  Object.assign(photo, { aligned, P, w, h, eyeY, auto, adj: Object.assign({}, auto), step: 'v', sel: 'hair' });
+  Object.assign(photo, { aligned, P, w, h, eyeY, auto, adj: Object.assign({}, auto), step: 'v', sel: null });
 
   // 横向きチェック：左右の目の幅の差
   const wl = Math.abs(x(133) - x(33)), wr = Math.abs(x(263) - x(362));
@@ -1197,15 +1247,15 @@ function segOf(l) {
 // 線の確認は「縦の線 → 横の線 → パーツ」の順に1画面ずつ進む
 const STEPS = ['v', 'h', 'p'];
 const STEP_TEXT = {
-  v: { title: '縦の線を確認する', lead: '生え際・眉頭の下・鼻の下・唇の合わせ目・あご先の5本が、写真に合っているか確認してください。ずれている線は、写真の上でなぞるか、選んで矢印で動かせます。', next: '次へ：横の線を確認する', back: '← 写真を選び直す' },
-  h: { title: '横の線を確認する', lead: '目の高さで、輪郭・目尻・目頭（左右）の6本が合っているか確認してください。', next: '次へ：パーツの線を確認する', back: '← 縦の線に戻る' },
-  p: { title: 'パーツの線を確認する', lead: '目の上下・小鼻・唇の上下・口角の線が合っているか確認してください。最後に「この線で計測する」を押すと結果が出ます。', next: 'この線で計測する', back: '← 横の線に戻る' },
+  v: { title: '縦の線を確認する', lead: '生え際・眉頭の下・鼻の下・唇の合わせ目・あご先の5本を確認します。', next: '次へ：横の線を確認する', back: '← 写真を選び直す' },
+  h: { title: '横の線を確認する', lead: '目の高さで、輪郭・目尻・目頭（左右）の6本を確認します。', next: '次へ：パーツの線を確認する', back: '← 縦の線に戻る' },
+  p: { title: 'パーツの線を確認する', lead: '目の上下・小鼻・唇の上下・口角の線を確認します。終わったら「この線で計測する」を押すと結果が出ます。', next: 'この線で計測する', back: '← 横の線に戻る' },
 };
 
 function setStep(step) {
   photo.step = step;
   photo.crop = stepCrop(step);
-  if (!LINES[step].some((l) => l.key === photo.sel)) photo.sel = LINES[step][0].key;
+  photo.sel = null;  // 開いた時点ではどの線も選ばない（自動のままでよければそのまま次へ）
   const idx = STEPS.indexOf(step);
   document.querySelectorAll('#s-adjust .steps li').forEach((li, i) => {
     li.classList.toggle('done', i < idx);
@@ -1225,7 +1275,8 @@ function setStep(step) {
   $('#adjust-error').classList.add('hidden');
   $('#line-chips').innerHTML = LINES[step].map((l) => `<button type="button" data-line="${l.key}">${l.name}</button>`).join('');
   $('#line-chips').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => selectLine(b.dataset.line)));
-  selectLine(photo.sel);
+  markChanged();
+  selectLine(null);
 }
 
 function goStep(step) {
@@ -1235,26 +1286,46 @@ function goStep(step) {
 
 function selectLine(key) {
   photo.sel = key;
-  const l = lineOf(key);
+  const l = key && lineOf(key);
   $('#line-chips').querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.line === key)));
-  $('#line-name').textContent = l.name;
-  $('#nudge-minus').textContent = l.axis === 'y' ? '▲' : '◀';
-  $('#nudge-plus').textContent = l.axis === 'y' ? '▼' : '▶';
-  $('#nudge-minus').setAttribute('aria-label', `${l.name}の線を${l.axis === 'y' ? '上' : '左'}へ動かす`);
-  $('#nudge-plus').setAttribute('aria-label', `${l.name}の線を${l.axis === 'y' ? '下' : '右'}へ動かす`);
+  $('#nudge').classList.toggle('hidden', !l);
+  $('#line-reset').classList.toggle('hidden', !l);
+  $('#pick-guide').textContent = l
+    ? `「${l.name}」を選んでいます。写真の正しい位置をタップするか、線をドラッグして動かします。細かい調整は矢印で。`
+    : '直したい線を、写真の上でタップしてください（下の名前から選ぶこともできます）。';
+  $('#tap-hint').textContent = l ? '正しい位置をタップ／ドラッグ' : '👆 直したい線をタップ';
+  if (l) {
+    $('#line-name').textContent = l.name;
+    $('#nudge-minus').textContent = l.axis === 'y' ? '▲' : '◀';
+    $('#nudge-plus').textContent = l.axis === 'y' ? '▼' : '▶';
+    $('#nudge-minus').setAttribute('aria-label', `${l.name}の線を${l.axis === 'y' ? '上' : '左'}へ動かす`);
+    $('#nudge-plus').setAttribute('aria-label', `${l.name}の線を${l.axis === 'y' ? '下' : '右'}へ動かす`);
+  }
   drawAdjust();
 }
+
+// 自動の位置から動かした線に「変更」の印を付ける
+function markChanged() {
+  $('#line-chips').querySelectorAll('button').forEach((b) => {
+    b.dataset.changed = String(Math.abs(photo.adj[b.dataset.line] - photo.auto[b.dataset.line]) > 0.5);
+  });
+}
+
+// 写真の上に出す短い名前（縦の線のステップは、そのままの名前）
+const SHORT = { cL: '輪郭', oL: '目尻', iL: '目頭', iR: '目頭', oR: '目尻', cR: '輪郭', eyeTop: '目の上', eyeBot: '目の下', alarL: '小鼻', alarR: '小鼻', lipTop: '上唇', lipBot: '下唇', mouthL: '口角', mouthR: '口角' };
 
 function drawAdjust() {
   const g = setupCanvas($('#adjust-canvas'), photo.crop);
   const { ctx } = g;
   const fs = Math.max(12, Math.round(g.W * 0.034));
-  LINES[photo.step].forEach((l) => {
+  LINES[photo.step].forEach((l, i) => {
     const on = l.key === photo.sel;
+    const dim = photo.sel && !on;  // ほかの線を選んでいるときは薄く
     const [x0, y0, x1, y1] = segOf(l);
     ctx.save();
-    ctx.strokeStyle = on ? '#ff4f97' : 'rgba(125,92,200,.85)';
-    ctx.lineWidth = (on ? 2.5 : 1.5) * g.u;
+    ctx.globalAlpha = dim ? 0.45 : 1;
+    ctx.strokeStyle = on ? '#ff4f97' : 'rgba(125,92,200,.9)';
+    ctx.lineWidth = (on ? 2.5 : 1.6) * g.u;
     ctx.setLineDash(on ? [] : [5 * g.u, 4 * g.u]);
     ctx.shadowColor = 'rgba(255,255,255,.9)';
     ctx.shadowBlur = 3;
@@ -1262,8 +1333,8 @@ function drawAdjust() {
     ctx.restore();
     if (on) {
       // つまみ（ここを動かせることが分かるように）
-      const hx = l.axis === 'y' ? g.X(x1) - fs * 1.6 : g.X(x0);
-      const hy = l.axis === 'y' ? g.Y(y0) : g.Y(y1) - fs * 1.6;
+      const hx = l.axis === 'y' ? Math.min(g.X(x1), g.W) - fs * 1.6 : g.X(x0);
+      const hy = l.axis === 'y' ? g.Y(y0) : Math.min(g.Y(y1), g.H) - fs * 1.6;
       ctx.save();
       ctx.fillStyle = '#ff4f97';
       ctx.strokeStyle = '#fff';
@@ -1275,11 +1346,28 @@ function drawAdjust() {
       ctx.fillText(l.axis === 'y' ? '↕' : '↔', hx, hy + 1);
       ctx.restore();
     }
-    if (on || (l.axis === 'y' && photo.step === 'v')) {
-      const tx = l.axis === 'y' ? Math.max(8, g.X(x0) + 8) : g.X(x0);
-      const ty = l.axis === 'y' ? g.Y(y0) - fs * 0.85 : g.Y(y0) + fs;
-      label(g, l.name, tx, ty, on ? '#ff4f97' : '#6b4f9e', l.axis === 'y' ? 'left' : 'center');
+    // どの線か分かるように、すべての線に名前を出す
+    // パーツは線が密集するので、唇の上下は右端、口角は唇の横（線の外側）に出して、名前どうしを重ねない
+    let tx, ty, align;
+    const below = l.key === 'eyeBot' || l.key === 'lipBot';
+    if (l.axis === 'y') {
+      const right = l.key === 'lipTop' || l.key === 'lipBot';
+      tx = right ? Math.min(g.W, g.X(x1)) - 8 : Math.max(0, g.X(x0)) + 8;
+      ty = below ? g.Y(y0) + fs * 0.9 : g.Y(y0) - fs * 0.8;
+      align = right ? 'right' : 'left';
+    } else if (l.key === 'mouthL' || l.key === 'mouthR') {
+      tx = g.X(x0) + (l.key === 'mouthL' ? -6 : 6);
+      ty = g.Y((y0 + y1) / 2);
+      align = l.key === 'mouthL' ? 'right' : 'left';
+    } else {
+      tx = g.X(x0);
+      ty = photo.step === 'h' ? fs * (i % 2 ? 2.2 : 1) : g.Y(y0) - fs * 0.6;
+      align = 'center';
     }
+    ctx.save();
+    ctx.globalAlpha = dim ? 0.5 : 1;
+    label(g, on ? l.name : (SHORT[l.key] || l.name), tx, ty, on ? '#ff4f97' : '#6b4f9e', align);
+    ctx.restore();
   });
   if (DEBUG) drawDebug(g);
 }
@@ -1305,6 +1393,7 @@ function drawDebug(g) {
 function moveLine(key, value) {
   const l = lineOf(key), cr = photo.crop;
   photo.adj[key] = l.axis === 'y' ? Math.min(cr.y1, Math.max(cr.y0, value)) : Math.min(cr.x1, Math.max(cr.x0, value));
+  markChanged();
   drawAdjust();
 }
 
@@ -1316,21 +1405,39 @@ function moveLine(key, value) {
     const r = cv.getBoundingClientRect(), cr = photo.crop;
     return { x: cr.x0 + ((e.clientX - r.left) / r.width) * (cr.x1 - cr.x0), y: cr.y0 + ((e.clientY - r.top) / r.height) * (cr.y1 - cr.y0), scale: r.width / (cr.x1 - cr.x0) };
   };
+  // タップした位置から、各線までの距離（画面上のpx）。線の範囲から外れていれば Infinity
+  const distTo = (l, p) => {
+    const [x0, y0, x1, y1] = segOf(l), pad = 24 / p.scale;
+    const along = l.axis === 'y' ? p.x >= Math.min(x0, x1) - pad && p.x <= Math.max(x0, x1) + pad
+                                 : p.y >= Math.min(y0, y1) - pad && p.y <= Math.max(y0, y1) + pad;
+    return along ? (l.axis === 'y' ? Math.abs(p.y - y0) : Math.abs(p.x - x0)) * p.scale : Infinity;
+  };
+  const startDrag = (key, p) => {
+    const l = lineOf(key);
+    drag = { key, axis: l.axis, start: l.axis === 'y' ? p.y : p.x, value: photo.adj[key] };
+  };
+  const pulseHint = () => {
+    const h = $('#tap-hint');
+    h.classList.remove('pulse'); void h.offsetWidth; h.classList.add('pulse');
+  };
+  // 線をタップ → その線を選ぶ。選んだあとに別の場所をタップ → 選んだ線をそこへ動かす
   cv.addEventListener('pointerdown', (e) => {
     const p = toImage(e);
-    let best = null;
-    LINES[photo.step].forEach((l) => {
-      const [x0, y0, x1, y1] = segOf(l);
-      const along = l.axis === 'y' ? p.x >= Math.min(x0, x1) - 20 / p.scale && p.x <= Math.max(x0, x1) + 20 / p.scale
-                                   : p.y >= Math.min(y0, y1) - 20 / p.scale && p.y <= Math.max(y0, y1) + 20 / p.scale;
-      const d = (l.axis === 'y' ? Math.abs(p.y - y0) : Math.abs(p.x - x0)) * p.scale;
-      if (along && d < 28 && (!best || d < best.d)) best = { l, d };
-    });
-    if (!best) return;
+    const near = LINES[photo.step].map((l) => ({ l, d: distTo(l, p) })).sort((a, b) => a.d - b.d);
     e.preventDefault();
     cv.setPointerCapture(e.pointerId);
-    selectLine(best.l.key);
-    drag = { key: best.l.key, axis: best.l.axis, start: best.l.axis === 'y' ? p.y : p.x, value: photo.adj[best.l.key] };
+    if (photo.sel) {
+      // 別の線の真上（選んでいる線より近く、12px以内）をタップしたら、その線に選び直す
+      const selD = near.find((n) => n.l.key === photo.sel).d;
+      if (near[0].l.key !== photo.sel && near[0].d < 12 && near[0].d < selD) { selectLine(near[0].l.key); startDrag(near[0].l.key, p); return; }
+      // それ以外は、選んでいる線をタップした位置へ動かし、そのままドラッグもできる
+      const l = lineOf(photo.sel);
+      moveLine(photo.sel, l.axis === 'y' ? p.y : p.x);
+      startDrag(photo.sel, p);
+      return;
+    }
+    if (near[0].d < 36) { selectLine(near[0].l.key); startDrag(near[0].l.key, p); return; }
+    pulseHint();
   });
   cv.addEventListener('pointermove', (e) => {
     if (!drag) return;
@@ -1343,6 +1450,7 @@ function moveLine(key, value) {
 
   // 矢印：1回押すと画面上で約1px、押しっぱなしで連続して動く
   const nudge = (dir) => {
+    if (!photo.sel) return;
     const l = lineOf(photo.sel), r = cv.getBoundingClientRect(), cr = photo.crop;
     const step = l.axis === 'y' ? (cr.y1 - cr.y0) / r.height : (cr.x1 - cr.x0) / r.width;
     moveLine(photo.sel, photo.adj[photo.sel] + dir * step);
@@ -1359,7 +1467,7 @@ function moveLine(key, value) {
     ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => btn.addEventListener(ev, stop));
     btn.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); nudge(dir); } });
   });
-  $('#line-reset').addEventListener('click', () => moveLine(photo.sel, photo.auto[photo.sel]));
+  $('#line-reset').addEventListener('click', () => { if (photo.sel) moveLine(photo.sel, photo.auto[photo.sel]); });
   document.querySelectorAll('#s-adjust .steps button').forEach((b) => b.addEventListener('click', () => goStep(b.dataset.step)));
 })();
 
